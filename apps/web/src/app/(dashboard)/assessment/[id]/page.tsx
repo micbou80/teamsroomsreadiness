@@ -23,6 +23,8 @@ import {
 import {
   ArrowLeft24Regular,
   ArrowDownload24Regular,
+  DocumentPdf24Regular,
+  Table24Regular,
   Warning24Filled,
   DismissCircle24Filled,
 } from '@fluentui/react-icons';
@@ -263,16 +265,26 @@ export default function AssessmentResultsPage() {
             {new Date(assessment.createdAt).toLocaleString()}
           </Text>
         </div>
-        <Button
-          appearance="secondary"
-          icon={<ArrowDownload24Regular />}
-          onClick={() => {
-            /* export placeholder */
-            alert('Export functionality coming soon.');
-          }}
-        >
-          Export
-        </Button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Button
+            appearance="secondary"
+            icon={<DocumentPdf24Regular />}
+            onClick={() => {
+              window.open(`/api/export/pdf?id=${assessmentId}&demo=true`, '_blank');
+            }}
+          >
+            Export PDF
+          </Button>
+          <Button
+            appearance="secondary"
+            icon={<Table24Regular />}
+            onClick={() => {
+              window.open(`/api/export/excel?id=${assessmentId}&demo=true`, '_blank');
+            }}
+          >
+            Export Excel
+          </Button>
+        </div>
       </div>
 
       {/* Score + Meta */}
