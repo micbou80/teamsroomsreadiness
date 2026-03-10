@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id          String       @id @default(cuid())
+  tenantId    String       @unique
+  displayName String
+  assessments Assessment[]
+  sites       Site[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Site {
+  id          String       @id @default(cuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [tenantId])
+  name        String
+  timezone    String       @default("UTC")
+  assessments Assessment[]
+  createdAt   DateTime     @default(now())
+}
+
+model Assessment {
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [tenantId])
+  siteId        String?
+  site          Site?         @relation(fields: [siteId], references: [id])
+  overallScore  Int
+  overallStatus String
+  results       String        // JSON string of CategoryResult[]
+  metadata      String        // JSON string of AssessmentMetadata
+  createdAt     DateTime      @default(now())
+  manualChecks  ManualCheck[]
+}
+
+model ManualCheck {
+  id           String     @id @default(cuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id])
+  checkId      String
+  status       String
+  notes        String?
+  completedBy  String
+  completedAt  DateTime   @default(now())
+}
