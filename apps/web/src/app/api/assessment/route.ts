@@ -193,6 +193,28 @@ export async function GET(request: NextRequest) {
     tenantId = session.tenantId;
   }
 
+  // Latest assessment
+  if (searchParams.get('latest') === 'true') {
+    const latest = await prisma.assessment.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!latest) {
+      return NextResponse.json(null);
+    }
+
+    return NextResponse.json({
+      id: latest.id,
+      tenantId: latest.tenantId,
+      overallScore: latest.overallScore,
+      overallStatus: latest.overallStatus,
+      categories: JSON.parse(latest.results),
+      metadata: JSON.parse(latest.metadata),
+      createdAt: latest.createdAt.toISOString(),
+    });
+  }
+
   // Single assessment by ID
   if (id) {
     const assessment = await prisma.assessment.findFirst({
