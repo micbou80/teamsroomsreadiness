@@ -1,6 +1,54 @@
 import NextAuth from 'next-auth';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 
+const AZURE_AD_SCOPES =
+  'openid profile email offline_access User.Read.All Organization.Read.All Policy.Read.All Directory.Read.All MailboxSettings.Read DeviceManagementManagedDevices.Read.All Place.Read.All';
+
+/**
+ * Use the refresh token to obtain a new access token from Microsoft Entra ID.
+ * Returns the updated token fields on success, or an error marker on failure.
+ */
+async function refreshAccessToken(token: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const tenantId = process.env.AZURE_AD_TENANT_ID;
+  const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: process.env.AZURE_AD_CLIENT_ID!,
+    client_secret: process.env.AZURE_AD_CLIENT_SECRET!,
+    refresh_token: token.refreshToken as string,
+    scope: AZURE_AD_SCOPES,
+  });
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.access_token) {
+    console.error('Failed to refresh access token:', data);
+    // Clear tokens so downstream code returns a clean 401 instead of silently failing
+    return {
+      ...token,
+      accessToken: undefined,
+      refreshToken: undefined,
+      expiresAt: undefined,
+      error: 'RefreshTokenError',
+    };
+  }
+
+  return {
+    ...token,
+    accessToken: data.access_token as string,
+    refreshToken: (data.refresh_token as string) ?? token.refreshToken, // Microsoft may or may not rotate
+    expiresAt: Math.floor(Date.now() / 1000) + (data.expires_in as number),
+    error: undefined,
+  };
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     MicrosoftEntraID({
@@ -10,7 +58,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       authorization: {
         url: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/authorize`,
         params: {
-          scope: 'openid profile email offline_access User.Read.All Organization.Read.All Policy.Read.All Directory.Read.All MailboxSettings.Read DeviceManagementManagedDevices.Read.All Place.Read.All',
+          scope: AZURE_AD_SCOPES,
         },
       },
       token: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
@@ -31,7 +79,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           ?? process.env.AZURE_AD_TENANT_ID
           ?? '';
         token.tenantId = tid;
+        return token;
       }
+
+      // On subsequent requests, refresh the access token if it is expired or
+      // within 60 seconds of expiry.
+      const expiresAt = token.expiresAt as number | undefined;
+      const bufferSeconds = 60;
+      if (expiresAt && Date.now() / 1000 >= expiresAt - bufferSeconds) {
+        if (token.refreshToken) {
+          return await refreshAccessToken(token);
+        }
+        // No refresh token available — clear access token for a clean re-auth
+        token.accessToken = undefined;
+        token.expiresAt = undefined;
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -58,5 +121,6 @@ declare module '@auth/core/jwt' {
     refreshToken?: string;
     expiresAt?: number;
     tenantId?: string;
+    error?: string;
   }
 }
