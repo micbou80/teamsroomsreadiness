@@ -1,31 +1,106 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Button,
   Card,
   CardHeader,
+  Checkbox,
   Title1,
+  Title2,
   Title3,
   Text,
   ProgressBar,
+  Divider,
   makeStyles,
   tokens,
   MessageBar,
   MessageBarBody,
   MessageBarTitle,
-  Switch,
+  Spinner,
 } from '@fluentui/react-components';
 import {
   ClipboardTask24Regular,
   Play24Filled,
   Checkmark24Regular,
+  ArrowRight24Filled,
+  DocumentPdf24Regular,
+  Table24Regular,
+  ArrowUpload24Regular,
+  CheckmarkCircle24Filled,
+  DismissCircle24Filled,
+  Warning24Filled,
+  Desktop24Regular,
+  Phone24Regular,
+  Tablet24Regular,
+  Board24Regular,
+  Speaker224Regular,
+  Copy24Regular,
+  ChevronDown24Regular,
+  ChevronRight24Regular,
 } from '@fluentui/react-icons';
+import { StatusBadge } from '@/components/assessment/StatusBadge';
+import { runAllBrowserNetworkChecks } from '@/lib/browser-network-checks';
+import type { Assessment, DeviceType } from '@/checks/types';
+
+// ---------------------------------------------------------------------------
+// Device type definitions
+// ---------------------------------------------------------------------------
+
+interface DeviceOption {
+  id: DeviceType;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+}
+
+const DEVICE_OPTIONS: DeviceOption[] = [
+  {
+    id: 'teams-rooms-windows',
+    label: 'Teams Rooms on Windows',
+    description: 'Certified room systems running Windows',
+    icon: Desktop24Regular,
+  },
+  {
+    id: 'teams-rooms-android',
+    label: 'Teams Rooms on Android',
+    description: 'Android-based room systems and collaboration bars',
+    icon: Board24Regular,
+  },
+  {
+    id: 'teams-panels',
+    label: 'Teams Panels',
+    description: 'Room scheduling touch displays mounted outside meeting rooms',
+    icon: Tablet24Regular,
+  },
+  {
+    id: 'teams-phones',
+    label: 'Teams Phones',
+    description: 'Desk phones and common area phones with Teams',
+    icon: Phone24Regular,
+  },
+  {
+    id: 'surface-hub',
+    label: 'Surface Hub',
+    description: 'Microsoft Surface Hub and Surface Hub 2S/3',
+    icon: Board24Regular,
+  },
+  {
+    id: 'byod',
+    label: 'BYOD',
+    description: 'Bring Your Own Device rooms with personal laptops and peripherals',
+    icon: Speaker224Regular,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const useStyles = makeStyles({
   container: {
-    maxWidth: '720px',
+    maxWidth: '800px',
   },
   subtitle: {
     display: 'block',
@@ -33,8 +108,23 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground3,
   },
   card: {
-    marginTop: '32px',
+    marginTop: '24px',
     padding: '32px',
+  },
+  deviceGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+    gap: '12px',
+    marginTop: '16px',
+  },
+  deviceCard: {
+    padding: '16px',
+    cursor: 'pointer',
+  },
+  deviceHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
   },
   progressSection: {
     marginTop: '24px',
@@ -55,25 +145,195 @@ const useStyles = makeStyles({
   error: {
     marginTop: '16px',
   },
+  stepIndicator: {
+    display: 'flex',
+    gap: '24px',
+    marginTop: '24px',
+    marginBottom: '8px',
+  },
+  step: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  stepNum: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    flexShrink: 0,
+  },
+  stepActive: {
+    backgroundColor: tokens.colorBrandBackground,
+    color: tokens.colorNeutralForegroundOnBrand,
+  },
+  stepDone: {
+    backgroundColor: tokens.colorStatusSuccessBackground1,
+    color: tokens.colorStatusSuccessForeground1,
+  },
+  stepPending: {
+    backgroundColor: tokens.colorNeutralBackground4,
+    color: tokens.colorNeutralForeground3,
+  },
+  resultsSummary: {
+    marginTop: '24px',
+  },
+  scoreRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '24px',
+    marginTop: '16px',
+  },
+  scoreBig: {
+    fontSize: '48px',
+    fontWeight: 'bold',
+    lineHeight: 1,
+  },
+  countsRow: {
+    display: 'flex',
+    gap: '16px',
+    flexWrap: 'wrap',
+  },
+  countItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  categoryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+    gap: '12px',
+    marginTop: '16px',
+  },
+  categoryCard: {
+    padding: '12px 16px',
+  },
+  categoryHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  completionActions: {
+    display: 'flex',
+    gap: '12px',
+    marginTop: '20px',
+    flexWrap: 'wrap',
+  },
+  // Step 2 - prominent card
+  step2Card: {
+    marginTop: '24px',
+    padding: '0',
+    overflow: 'hidden',
+  },
+  step2Header: {
+    padding: '20px 28px',
+    backgroundColor: tokens.colorBrandBackground,
+    color: tokens.colorNeutralForegroundOnBrand,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  step2Body: {
+    padding: '24px 28px',
+  },
+  step2Steps: {
+    marginTop: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  step2Step: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '12px',
+  },
+  stepNumber: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    backgroundColor: tokens.colorBrandBackground,
+    color: tokens.colorNeutralForegroundOnBrand,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    flexShrink: 0,
+  },
+  codeBlock: {
+    marginTop: '6px',
+    padding: '10px 14px',
+    backgroundColor: tokens.colorNeutralBackground4,
+    borderRadius: tokens.borderRadiusMedium,
+    fontFamily: 'Consolas, Monaco, monospace',
+    fontSize: tokens.fontSizeBase200,
+    overflowX: 'auto',
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
 });
+
+function scoreColor(score: number): string {
+  if (score >= 80) return tokens.colorStatusSuccessForeground1;
+  if (score >= 60) return tokens.colorStatusWarningForeground1;
+  return tokens.colorStatusDangerForeground1;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function RunAssessmentPage() {
   const styles = useStyles();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const demoMode = searchParams.get('demo') === 'true';
 
+  const [selectedDevices, setSelectedDevices] = useState<Set<DeviceType>>(
+    new Set(['teams-rooms-windows']),
+  );
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [demoMode, setDemoMode] = useState(true);
+  const [result, setResult] = useState<Assessment | null>(null);
+  const [uploadUrl, setUploadUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [copiedFallback, setCopiedFallback] = useState(false);
+  const [waitingForPs, setWaitingForPs] = useState(false);
+  const [psReceived, setPsReceived] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [lastPolledAt, setLastPolledAt] = useState<number | null>(null);
+  const [secondsSinceLastPoll, setSecondsSinceLastPoll] = useState(0);
+  const [pollCount, setPollCount] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initialPsMerged = useRef(0);
+
+  function toggleDevice(id: DeviceType) {
+    setSelectedDevices((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   async function startAssessment() {
     setRunning(true);
     setError(null);
+    setResult(null);
     setProgress(0);
     setStatusText('Initializing assessment...');
 
-    // Simulate progress steps while the API call is in-flight
     const progressSteps = [
       { pct: 0.1, label: 'Registering checks...' },
       { pct: 0.25, label: 'Querying licensing...' },
@@ -96,7 +356,11 @@ export default function RunAssessmentPage() {
 
     try {
       const queryParam = demoMode ? '?demo=true' : '';
-      const res = await fetch(`/api/assessment${queryParam}`, { method: 'POST' });
+      const res = await fetch(`/api/assessment${queryParam}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceTypes: Array.from(selectedDevices) }),
+      });
 
       clearInterval(timer);
 
@@ -105,21 +369,208 @@ export default function RunAssessmentPage() {
         throw new Error(data.error ?? `Request failed with status ${res.status}`);
       }
 
-      const assessment = await res.json();
+      const assessment: Assessment = await res.json();
 
+      // Auto-run server-side network checks
+      setProgress(0.92);
+      setStatusText('Running server-side network checks...');
+      try {
+        const netRes = await fetch('/api/network-check', { method: 'POST' });
+        if (netRes.ok) {
+          const netData = await netRes.json();
+          if (netData.checks?.length > 0) {
+            await fetch(`/api/assessment/merge-network?id=${assessment.id}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(netData.checks),
+            });
+          }
+        }
+      } catch {
+        // Non-fatal - network checks are optional
+      }
+
+      // Browser-based network checks (from user's actual network)
+      setProgress(0.96);
+      setStatusText('Testing network from your browser...');
+      try {
+        const browserResults = await runAllBrowserNetworkChecks();
+        if (browserResults.length > 0) {
+          await fetch(`/api/assessment/merge-network?id=${assessment.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(browserResults),
+          });
+        }
+      } catch {
+        // Non-fatal - browser checks are best-effort
+      }
+
+      // Re-fetch to get results with all network checks merged
       setProgress(1);
-      setStatusText('Assessment complete!');
-
-      // Short delay to show 100% before redirecting
-      setTimeout(() => {
-        router.push(`/assessment/${assessment.id}`);
-      }, 800);
+      setStatusText('Cloud checks complete');
+      setRunning(false);
+      let updatedAssessment = assessment;
+      try {
+        const updated = await fetch(`/api/assessment?id=${assessment.id}`);
+        if (updated.ok) {
+          updatedAssessment = await updated.json();
+        }
+      } catch {
+        // Use the original if re-fetch fails
+      }
+      setResult(updatedAssessment);
     } catch (err) {
       clearInterval(timer);
       setRunning(false);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     }
   }
+
+  // Compute summary counts from the result
+  const categories = result?.categories ?? [];
+  const allChecks = categories.flatMap((c) => c.checks);
+  const passCount = allChecks.filter((c) => c.status === 'pass').length;
+  const failCount = allChecks.filter((c) => c.status === 'fail').length;
+  const warnCount = allChecks.filter((c) => c.status === 'warning').length;
+  const pendingCount = allChecks.filter((c) => c.status === 'pending').length;
+
+  const step1Done = result !== null;
+
+  // Extract discovered room mailbox emails from the identity check rawData
+  const discoveredRooms: string[] = (() => {
+    if (!result) return [];
+    const identityCat = categories.find((c) => c.categoryId === 'identity');
+    if (!identityCat) return [];
+    const resourceCheck = identityCat.checks.find(
+      (c) => c.checkId === 'identity-resource-account-exists',
+    );
+    if (!resourceCheck?.rawData?.rooms) return [];
+    const rooms = resourceCheck.rawData.rooms as { displayName: string; emailAddress: string }[];
+    return rooms.map((r) => r.emailAddress).filter(Boolean);
+  })();
+
+  const roomMailboxParam =
+    discoveredRooms.length > 0
+      ? discoveredRooms.map((e) => `'${e}'`).join(',')
+      : "'mtr-room@contoso.com'";
+
+  // Generate upload token and start polling when Step 1 completes with pending checks
+  useEffect(() => {
+    if (!result || pendingCount === 0) return;
+
+    // Generate upload token
+    const demoParam = demoMode ? '&demo=true' : '';
+    fetch(`/api/upload-token?assessmentId=${result.id}${demoParam}`, { method: 'POST' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.uploadUrl) {
+          setUploadUrl(data.uploadUrl);
+          setWaitingForPs(true);
+          initialPsMerged.current = result.metadata?.powershellChecksMerged ?? 0;
+        }
+      })
+      .catch(() => {
+        // Token generation failed - fall back to manual upload
+      });
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [result, pendingCount, demoMode]);
+
+  // Poll for PS upload completion
+  useEffect(() => {
+    if (!waitingForPs || !result || psReceived) return;
+
+    pollRef.current = setInterval(async () => {
+      setPollCount((c) => c + 1);
+      try {
+        const res = await fetch(`/api/assessment?id=${result.id}`);
+        if (!res.ok) {
+          setPollError(`Server returned ${res.status} — retrying…`);
+          return;
+        }
+        const updated: Assessment = await res.json();
+        setPollError(null);
+        setLastPolledAt(Date.now());
+        const newMerged = updated.metadata?.powershellChecksMerged ?? 0;
+        if (newMerged > initialPsMerged.current) {
+          setPsReceived(true);
+          setWaitingForPs(false);
+          setResult(updated);
+          if (pollRef.current) clearInterval(pollRef.current);
+          // Auto-navigate to the full results page
+          router.push(`/assessment/${updated.id}`);
+        }
+      } catch {
+        setPollError('Connection error — retrying in 5 seconds…');
+      }
+    }, 5000);
+
+    // Stop polling after 10 minutes
+    const maxPoll = setTimeout(() => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      setWaitingForPs(false);
+    }, 10 * 60 * 1000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      clearTimeout(maxPoll);
+    };
+  }, [waitingForPs, result, psReceived]);
+
+  // Elapsed timer while waiting for PS results
+  useEffect(() => {
+    if (!waitingForPs) {
+      setElapsedSeconds(0);
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
+    setElapsedSeconds(0);
+    timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [waitingForPs]);
+
+  // Live "X seconds ago" counter for last poll
+  useEffect(() => {
+    if (!lastPolledAt) return;
+    setSecondsSinceLastPoll(0);
+    const id = setInterval(() => {
+      setSecondsSinceLastPoll(Math.floor((Date.now() - lastPolledAt) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lastPolledAt]);
+
+  function formatElapsed(s: number) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  }
+
+  const psModulePath = process.env.NEXT_PUBLIC_PS_MODULE_PATH;
+  const psModuleLine = psModulePath
+    ? `Import-Module '${psModulePath}'`
+    : `Install-Module MTRReadiness -Scope CurrentUser`;
+
+  const copyCommand = useCallback(() => {
+    if (!uploadUrl) return;
+    const cmd = `${psModuleLine}\nConnect-ExchangeOnline\nInvoke-MTRReadinessCheck -RoomMailboxes ${roomMailboxParam} -AutoUpload '${uploadUrl}'`;
+    navigator.clipboard.writeText(cmd).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [uploadUrl, roomMailboxParam, psModuleLine]);
+
+  const copyFallbackCommand = useCallback(() => {
+    const cmd = `${psModuleLine}\nConnect-ExchangeOnline\nInvoke-MTRReadinessCheck -RoomMailboxes ${roomMailboxParam}`;
+    navigator.clipboard.writeText(cmd).then(() => {
+      setCopiedFallback(true);
+      setTimeout(() => setCopiedFallback(false), 2000);
+    });
+  }, [roomMailboxParam]);
 
   return (
     <div className={styles.container}>
@@ -128,43 +579,120 @@ export default function RunAssessmentPage() {
         Evaluate your Microsoft 365 tenant configuration for Teams Rooms readiness.
       </Text>
 
+      {/* Step indicator */}
+      <div className={styles.stepIndicator}>
+        <div className={styles.step}>
+          <span
+            className={`${styles.stepNum} ${step1Done ? styles.stepDone : running ? styles.stepActive : styles.stepPending}`}
+          >
+            {step1Done ? <Checkmark24Regular style={{ fontSize: '14px' }} /> : '1'}
+          </span>
+          <Text size={200} weight={running || step1Done ? 'semibold' : 'regular'}>
+            Licensing, Identity & Management
+          </Text>
+        </div>
+        <div className={styles.step}>
+          <span className={`${styles.stepNum} ${styles.stepPending}`}>2</span>
+          <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+            Platform, Security & Voice
+          </Text>
+        </div>
+      </div>
+
+      {/* Onboarding: device selection — shown before starting */}
+      {!step1Done && !running && (
+        <Card className={styles.card}>
+          <Title3 as="h2">What are you deploying?</Title3>
+          <Text
+            size={200}
+            style={{ display: 'block', marginTop: '4px', color: tokens.colorNeutralForeground3 }}
+          >
+            Select the device types you plan to deploy. This helps us focus the assessment on
+            the checks most relevant to your environment.
+          </Text>
+          <div className={styles.deviceGrid}>
+            {DEVICE_OPTIONS.map((device) => {
+              const selected = selectedDevices.has(device.id);
+              const Icon = device.icon;
+              return (
+                <div
+                  key={device.id}
+                  className={styles.deviceCard}
+                  style={{
+                    border: selected
+                      ? `2px solid ${tokens.colorBrandStroke1}`
+                      : `1px solid ${tokens.colorNeutralStroke2}`,
+                    borderRadius: tokens.borderRadiusMedium,
+                    backgroundColor: selected ? tokens.colorBrandBackground2 : undefined,
+                  }}
+                  onClick={() => toggleDevice(device.id)}
+                >
+                  <div className={styles.deviceHeader}>
+                    <Checkbox checked={selected} onChange={() => {/* handled by parent onClick */}} />
+                    <Icon style={{ fontSize: '20px', color: tokens.colorBrandForeground1 }} />
+                    <Text size={200} weight="semibold">
+                      {device.label}
+                    </Text>
+                  </div>
+                  <Text
+                    size={100}
+                    style={{
+                      display: 'block',
+                      marginTop: '6px',
+                      paddingLeft: '38px',
+                      color: tokens.colorNeutralForeground3,
+                    }}
+                  >
+                    {device.description}
+                  </Text>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* Step 1 card */}
       <Card className={styles.card}>
         <CardHeader
           image={<ClipboardTask24Regular />}
-          header={<Title3>New Assessment</Title3>}
+          header={<Title3>Step 1: Licensing, Identity & Management</Title3>}
           description={
             <Text size={200}>
-              This will run all registered checks against your tenant via Microsoft Graph
-              and combine results with any uploaded PowerShell data.
+              Runs automated checks against your tenant: licensing, identity, calendar,
+              Conditional Access, network, and management configuration.
             </Text>
           }
         />
 
-        <div className={styles.controls}>
-          <Button
-            appearance="primary"
-            icon={running ? undefined : <Play24Filled />}
-            size="large"
-            disabled={running}
-            onClick={startAssessment}
-          >
-            {running ? 'Running...' : 'Start Assessment'}
-          </Button>
+        {!step1Done && (
+          <div className={styles.controls}>
+            <Button
+              appearance="primary"
+              icon={running ? undefined : <Play24Filled />}
+              size="large"
+              disabled={running || selectedDevices.size === 0}
+              onClick={startAssessment}
+            >
+              {running ? 'Running...' : 'Start Assessment'}
+            </Button>
+          </div>
+        )}
 
-          <Switch
-            label="Demo mode"
-            checked={demoMode}
-            onChange={(_, data) => setDemoMode(data.checked)}
-            disabled={running}
-          />
-        </div>
+        {selectedDevices.size === 0 && !running && !step1Done && (
+          <MessageBar intent="warning" style={{ marginTop: '16px' }}>
+            <MessageBarBody>
+              Select at least one device type above to start the assessment.
+            </MessageBarBody>
+          </MessageBar>
+        )}
 
-        {demoMode && !running && (
+        {demoMode && !running && !step1Done && selectedDevices.size > 0 && (
           <MessageBar intent="info" style={{ marginTop: '16px' }}>
             <MessageBarBody>
               <MessageBarTitle>Demo Mode</MessageBarTitle>
-              Sample results will be generated without connecting to Azure AD. Toggle off to
-              run against your real tenant.
+              Sample results will be generated without connecting to Azure AD. Use the sidebar to
+              exit demo mode and run against your real tenant.
             </MessageBarBody>
           </MessageBar>
         )}
@@ -181,15 +709,6 @@ export default function RunAssessmentPage() {
           </div>
         )}
 
-        {progress === 1 && (
-          <MessageBar intent="success" style={{ marginTop: '16px' }}>
-            <MessageBarBody>
-              <MessageBarTitle>Complete</MessageBarTitle>
-              Redirecting to results...
-            </MessageBarBody>
-          </MessageBar>
-        )}
-
         {error && (
           <MessageBar intent="error" className={styles.error}>
             <MessageBarBody>
@@ -198,7 +717,364 @@ export default function RunAssessmentPage() {
             </MessageBarBody>
           </MessageBar>
         )}
+
+        {/* Inline results summary */}
+        {result && (
+          <div className={styles.resultsSummary}>
+            <Divider />
+
+            {/* Compact summary row — always visible, clickable to expand */}
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '16px', cursor: 'pointer' }}
+              onClick={() => setShowDetails((v) => !v)}
+            >
+              <Text
+                style={{ fontSize: '32px', fontWeight: 'bold', lineHeight: 1, color: scoreColor(result.overallScore) }}
+              >
+                {result.overallScore}
+              </Text>
+              <div style={{ flex: 1 }}>
+                <Text size={200} style={{ display: 'block', color: tokens.colorNeutralForeground3 }}>
+                  / 100 readiness score
+                </Text>
+                <div className={styles.countsRow} style={{ marginTop: '4px' }}>
+                  <div className={styles.countItem}>
+                    <CheckmarkCircle24Filled
+                      style={{ color: tokens.colorStatusSuccessForeground1, fontSize: '16px' }}
+                    />
+                    <Text size={200}>{passCount} passed</Text>
+                  </div>
+                  <div className={styles.countItem}>
+                    <DismissCircle24Filled
+                      style={{ color: tokens.colorStatusDangerForeground1, fontSize: '16px' }}
+                    />
+                    <Text size={200}>{failCount} failed</Text>
+                  </div>
+                  <div className={styles.countItem}>
+                    <Warning24Filled
+                      style={{ color: tokens.colorStatusWarningForeground1, fontSize: '16px' }}
+                    />
+                    <Text size={200}>{warnCount} warnings</Text>
+                  </div>
+                </div>
+              </div>
+              {showDetails ? (
+                <ChevronDown24Regular style={{ color: tokens.colorNeutralForeground3 }} />
+              ) : (
+                <ChevronRight24Regular style={{ color: tokens.colorNeutralForeground3 }} />
+              )}
+            </div>
+
+            {/* Expandable details — category breakdown + actions */}
+            {showDetails && (
+              <>
+                <div className={styles.categoryGrid}>
+                  {categories
+                    .filter((cat) => cat.checks.some((c) => c.status !== 'pending'))
+                    .map((cat) => {
+                    const catPassed = cat.checks.filter((c) => c.status === 'pass').length;
+                    const catTotal = cat.checks.filter(
+                      (c) => c.status !== 'pending' && c.status !== 'not-applicable',
+                    ).length;
+                    return (
+                      <Card key={cat.categoryId} className={styles.categoryCard}>
+                        <div className={styles.categoryHeader}>
+                          <Text size={200} weight="semibold">
+                            {cat.name}
+                          </Text>
+                          <StatusBadge status={cat.status} />
+                        </div>
+                        <Text size={100} style={{ color: tokens.colorNeutralForeground3 }}>
+                          {catPassed}/{catTotal} passed &middot; Score: {cat.score}
+                        </Text>
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                <div className={styles.completionActions}>
+                    <Button
+                      appearance="primary"
+                      icon={<ArrowRight24Filled />}
+                      size="large"
+                      onClick={() => router.push(`/assessment/${result.id}`)}
+                    >
+                      View Full Results
+                    </Button>
+                    <Button
+                      appearance="secondary"
+                      icon={<DocumentPdf24Regular />}
+                      onClick={() => window.open(`/api/export/pdf?id=${result.id}`, '_blank')}
+                    >
+                      Export PDF
+                    </Button>
+                    <Button
+                      appearance="secondary"
+                      icon={<Table24Regular />}
+                      onClick={() => window.open(`/api/export/excel?id=${result.id}`, '_blank')}
+                    >
+                      Export Excel
+                    </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </Card>
+
+      {/* Step 2 - prominent card with branded header */}
+      {result && pendingCount > 0 && !psReceived && (
+        <Card className={styles.step2Card}>
+          <div className={styles.step2Header}>
+            <ArrowRight24Filled style={{ fontSize: '24px' }} />
+            <div>
+              <Title3 as="h2" style={{ color: 'inherit', margin: 0 }}>
+                Step 2: Platform, Security & Voice
+              </Title3>
+              <Text size={200} style={{ color: 'rgba(255,255,255,0.85)', display: 'block' }}>
+                {pendingCount} check{pendingCount !== 1 ? 's' : ''} need on-premises data from
+                PowerShell
+              </Text>
+            </div>
+          </div>
+          <div className={styles.step2Body}>
+            <Text size={200} style={{ display: 'block', color: tokens.colorNeutralForeground2 }}>
+              Calendar processing checks require Exchange Online PowerShell. Copy the command
+              below, run it in PowerShell, and results will be uploaded automatically.
+            </Text>
+
+            {uploadUrl ? (
+              <>
+                <div className={styles.codeBlock} style={{ marginTop: '16px', position: 'relative', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                  <Button
+                    appearance="subtle"
+                    icon={copied ? <Checkmark24Regular /> : <Copy24Regular />}
+                    size="small"
+                    style={{ position: 'absolute', top: '4px', right: '4px' }}
+                    onClick={copyCommand}
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </Button>
+                  {psModuleLine}<br />
+                  Connect-ExchangeOnline<br />
+                  Invoke-MTRReadinessCheck -RoomMailboxes {roomMailboxParam} `<br />
+                  &nbsp;&nbsp;-AutoUpload &apos;{uploadUrl}&apos;
+                  {discoveredRooms.length > 0 && (
+                    <div style={{ marginTop: '8px', fontSize: '11px', color: tokens.colorNeutralForeground3 }}>
+                      {discoveredRooms.length} room{discoveredRooms.length !== 1 ? 's' : ''} auto-discovered from your tenant
+                    </div>
+                  )}
+                </div>
+
+                {waitingForPs && (() => {
+                  const roomCount = discoveredRooms.length || 1;
+                  const estMinLow = Math.max(1, Math.round(roomCount * 17 / 60));
+                  const estMinHigh = Math.max(2, Math.round(roomCount * 20 / 60));
+                  const estTotalSec = roomCount * 20;
+                  const overdue = elapsedSeconds > estTotalSec;
+                  // Show hang warning after 2 min, or at 60% of estimated time — whichever is earlier
+                  const hangWarnAt = Math.min(120, estTotalSec * 0.6);
+                  const showHangWarning = elapsedSeconds > hangWarnAt;
+
+                  return (
+                    <div style={{ marginTop: '20px' }}>
+                      {/* keyframes for pulse dot */}
+                      <style>{`
+                        @keyframes mtr-pulse {
+                          0%, 100% { opacity: 1; transform: scale(1); }
+                          50% { opacity: 0.4; transform: scale(0.75); }
+                        }
+                        @keyframes mtr-row-fade {
+                          0%, 100% { opacity: 1; }
+                          50% { opacity: 0.55; }
+                        }
+                      `}</style>
+
+                      {/* Header: status + elapsed */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Spinner size="tiny" />
+                          <Text size={200} weight="semibold">Waiting for PowerShell results…</Text>
+                        </div>
+                        <Text size={200} style={{ color: tokens.colorNeutralForeground3, fontVariantNumeric: 'tabular-nums' }}>
+                          {formatElapsed(elapsedSeconds)}
+                        </Text>
+                      </div>
+
+                      {/* Progress bar */}
+                      <ProgressBar />
+
+                      {/* Status row: poll heartbeat + estimate */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', flexWrap: 'wrap', gap: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            width: '7px', height: '7px', borderRadius: '50%',
+                            backgroundColor: pollError ? tokens.colorStatusWarningForeground1 : tokens.colorStatusSuccessForeground1,
+                            display: 'inline-block',
+                            animation: 'mtr-pulse 2s ease-in-out infinite',
+                            flexShrink: 0,
+                          }} />
+                          <Text size={100} style={{ color: tokens.colorNeutralForeground3 }}>
+                            {pollError
+                              ? pollError
+                              : lastPolledAt
+                                ? pollCount === 1
+                                  ? 'Checking every 5 seconds…'
+                                  : `Checked ${secondsSinceLastPoll}s ago · poll #${pollCount}`
+                                : 'First check in a moment…'
+                            }
+                          </Text>
+                        </div>
+                        <Text size={100} style={{
+                          color: overdue ? tokens.colorStatusWarningForeground1 : tokens.colorNeutralForeground3,
+                          fontStyle: overdue ? 'italic' : undefined,
+                        }}>
+                          {overdue
+                            ? 'Taking longer than expected — script may still be running'
+                            : `~${estMinLow}–${estMinHigh} min estimated (${roomCount} rooms)`
+                          }
+                        </Text>
+                      </div>
+
+                      {/* Poll error banner */}
+                      {pollError && (
+                        <MessageBar intent="warning" style={{ marginTop: '10px' }}>
+                          <MessageBarBody>{pollError}</MessageBarBody>
+                        </MessageBar>
+                      )}
+
+                      {/* Hang warning — appears early, before user gives up */}
+                      {showHangWarning && (
+                        <MessageBar intent={overdue ? 'warning' : 'info'} style={{ marginTop: '10px' }}>
+                          <MessageBarBody>
+                            <MessageBarTitle>{overdue ? 'Still waiting — no results received' : 'Still waiting…'}</MessageBarTitle>
+                            No results have been uploaded yet. This usually means one of:
+                            <ul style={{ margin: '6px 0 4px 0', paddingLeft: '18px' }}>
+                              <li>The command hasn't been run yet — copy it above and run it in PowerShell</li>
+                              <li>The script is still running — it can take {estMinLow}–{estMinHigh} min for {roomCount} rooms</li>
+                              <li>The script hung on a Voice/SBC check (common on restricted networks) — press <strong>Ctrl+C</strong> and upload the saved results file manually</li>
+                              <li>The script finished but the window closed before uploading — re-run the command or upload manually</li>
+                            </ul>
+                            <Button
+                              appearance="transparent"
+                              size="small"
+                              style={{ padding: '0 4px', height: 'auto', minHeight: 0 }}
+                              onClick={() => router.push('/upload')}
+                            >
+                              Upload manually →
+                            </Button>
+                          </MessageBarBody>
+                        </MessageBar>
+                      )}
+
+                      {/* Pending checks list */}
+                      <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {categories
+                          .filter((cat) => cat.checks.some((c) => c.status === 'pending'))
+                          .map((cat) => (
+                            <div key={cat.categoryId}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                <Text
+                                  size={100}
+                                  weight="semibold"
+                                  style={{
+                                    color: tokens.colorNeutralForeground3,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                    animation: 'mtr-row-fade 3s ease-in-out infinite',
+                                  }}
+                                >
+                                  {cat.name}
+                                </Text>
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '1px 5px',
+                                  borderRadius: '10px',
+                                  backgroundColor: tokens.colorNeutralBackground4,
+                                  color: tokens.colorNeutralForeground3,
+                                  fontWeight: 600,
+                                  letterSpacing: '0.03em',
+                                }}>
+                                  WAITING
+                                </span>
+                              </div>
+                              {cat.checks
+                                .filter((c) => c.status === 'pending')
+                                .map((check) => (
+                                  <div
+                                    key={check.checkId}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '8px', marginBottom: '3px' }}
+                                  >
+                                    <Spinner size="extra-tiny" />
+                                    <Text size={200}>{check.name}</Text>
+                                  </div>
+                                ))}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              <div className={styles.step2Steps}>
+                <div className={styles.step2Step}>
+                  <span className={styles.stepNumber}>1</span>
+                  <div>
+                    <Text size={300} weight="semibold">Import the module and run checks</Text>
+                    <div className={styles.codeBlock} style={{ position: 'relative', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                      <Button
+                        appearance="subtle"
+                        icon={copiedFallback ? <Checkmark24Regular /> : <Copy24Regular />}
+                        size="small"
+                        style={{ position: 'absolute', top: '4px', right: '4px' }}
+                        onClick={copyFallbackCommand}
+                      >
+                        {copiedFallback ? 'Copied!' : 'Copy'}
+                      </Button>
+                      {psModuleLine}<br />
+                      Connect-ExchangeOnline<br />
+                      Invoke-MTRReadinessCheck -RoomMailboxes {roomMailboxParam}
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.step2Step}>
+                  <span className={styles.stepNumber}>2</span>
+                  <div>
+                    <Text size={300} weight="semibold">Upload the results</Text>
+                    <Button
+                      appearance="primary"
+                      size="medium"
+                      icon={<ArrowUpload24Regular />}
+                      style={{ marginTop: '8px' }}
+                      onClick={() => router.push('/upload')}
+                    >
+                      Upload PowerShell Results
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* PS results received */}
+      {psReceived && (
+        <Card className={styles.step2Card}>
+          <div className={styles.step2Header} style={{ backgroundColor: tokens.colorStatusSuccessBackground1 }}>
+            <CheckmarkCircle24Filled style={{ fontSize: '24px', color: tokens.colorStatusSuccessForeground1 }} />
+            <div>
+              <Title3 as="h2" style={{ color: tokens.colorStatusSuccessForeground1, margin: 0 }}>
+                Assessment complete
+              </Title3>
+              <Text size={200} style={{ display: 'block', color: tokens.colorNeutralForeground2 }}>
+                PowerShell results merged successfully. All checks have been evaluated.
+              </Text>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

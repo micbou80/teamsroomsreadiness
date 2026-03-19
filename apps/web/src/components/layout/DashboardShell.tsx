@@ -1,6 +1,6 @@
 'use client';
 
-import { makeStyles } from '@fluentui/react-components';
+import { makeStyles, tokens } from '@fluentui/react-components';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 
@@ -13,29 +13,29 @@ const useStyles = makeStyles({
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
+    backgroundColor: tokens.colorNeutralBackground2,
+    minWidth: 0,
   },
   content: {
     flex: 1,
-    padding: '24px',
+    padding: '28px 36px',
     overflowY: 'auto',
   },
 });
 
 interface DashboardShellProps {
   children: React.ReactNode;
-  tenantName?: string;
-  userName?: string;
 }
 
-export function DashboardShell({ children, tenantName, userName }: DashboardShellProps) {
+export function DashboardShell({ children }: DashboardShellProps) {
   const styles = useStyles();
 
   return (
     <div className={styles.shell}>
       <Sidebar />
       <div className={styles.main}>
-        <TopBar tenantName={tenantName} userName={userName} />
-        <main className={styles.content}>{children}</main>
+        <TopBar />
+        <div className={styles.content}>{children}</div>
       </div>
     </div>
   );

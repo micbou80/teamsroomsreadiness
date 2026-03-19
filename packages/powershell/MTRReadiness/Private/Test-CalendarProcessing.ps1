@@ -15,111 +15,75 @@ function Test-CalendarProcessing {
         [string]$Identity
     )
 
-    $results = @()
-
     try {
         $calProc = Get-CalendarProcessing -Identity $Identity -ErrorAction Stop
     }
     catch {
-        $results += [PSCustomObject]@{
-            CheckId    = 'calendar-processing'
+        return [PSCustomObject]@{
+            CheckId    = 'cal-calendar-processing'
             CategoryId = 'calendar'
             Status     = 'fail'
             Details    = "Failed to retrieve calendar processing for '$Identity': $($_.Exception.Message)"
             RawData    = @{ error = $_.Exception.Message }
         }
-        return $results
     }
 
-    # --- AutomateProcessing should be AutoAccept ---
-    if ($calProc.AutomateProcessing -eq 'AutoAccept') {
-        $results += [PSCustomObject]@{
-            CheckId    = 'calendar-processing'
-            CategoryId = 'calendar'
-            Status     = 'pass'
-            Details    = "AutomateProcessing is set to AutoAccept."
-            RawData    = @{ AutomateProcessing = $calProc.AutomateProcessing }
-        }
+    # Evaluate all properties and collect issues/warnings
+    $issues = @()
+    $warnings = @()
+
+    if ($calProc.AutomateProcessing -ne 'AutoAccept') {
+        $issues += "AutomateProcessing is '$($calProc.AutomateProcessing)' (should be AutoAccept)"
     }
-    else {
-        $results += [PSCustomObject]@{
-            CheckId    = 'calendar-processing'
+    if ($calProc.DeleteComments -eq $true) {
+        $issues += 'DeleteComments is true (meeting body with Teams join link will be removed)'
+    }
+    if ($calProc.DeleteSubject -eq $true) {
+        $issues += 'DeleteSubject is true (subject will be removed from device display)'
+    }
+    if ($calProc.AddOrganizerToSubject -eq $true) {
+        $warnings += 'AddOrganizerToSubject is true (overwrites subject with organizer name)'
+    }
+    if ($calProc.RemovePrivateProperty -eq $true) {
+        $warnings += 'RemovePrivateProperty is true (private flag stripped from meetings)'
+    }
+
+    $rawData = @{
+        room = $Identity
+        AutomateProcessing     = [string]$calProc.AutomateProcessing
+        DeleteComments         = [bool]$calProc.DeleteComments
+        DeleteSubject          = [bool]$calProc.DeleteSubject
+        AddOrganizerToSubject  = [bool]$calProc.AddOrganizerToSubject
+        RemovePrivateProperty  = [bool]$calProc.RemovePrivateProperty
+    }
+
+    if ($issues.Count -gt 0) {
+        return [PSCustomObject]@{
+            CheckId    = 'cal-calendar-processing'
             CategoryId = 'calendar'
             Status     = 'fail'
-            Details    = "AutomateProcessing is '$($calProc.AutomateProcessing)' — expected 'AutoAccept'."
-            RawData    = @{ AutomateProcessing = $calProc.AutomateProcessing }
+            Details    = "$Identity`: $($issues -join '; ')"
+            RawData    = $rawData
         }
     }
-
-    # --- DeleteComments should be $false ---
-    if ($calProc.DeleteComments -eq $false) {
-        $details = "DeleteComments is disabled (meeting body preserved for Teams join info)."
-        $status = 'pass'
+    elseif ($warnings.Count -gt 0) {
+        return [PSCustomObject]@{
+            CheckId    = 'cal-calendar-processing'
+            CategoryId = 'calendar'
+            Status     = 'warning'
+            Details    = "$Identity`: $($warnings -join '; ')"
+            RawData    = $rawData
+        }
     }
     else {
-        $details = "DeleteComments is enabled — Teams join info will be stripped from meeting bodies."
-        $status = 'fail'
+        return [PSCustomObject]@{
+            CheckId    = 'cal-calendar-processing'
+            CategoryId = 'calendar'
+            Status     = 'pass'
+            Details    = "Calendar processing for '$Identity' is correctly configured."
+            RawData    = $rawData
+        }
     }
-    $results += [PSCustomObject]@{
-        CheckId    = 'calendar-processing-delete-comments'
-        CategoryId = 'calendar'
-        Status     = $status
-        Details    = $details
-        RawData    = @{ DeleteComments = $calProc.DeleteComments }
-    }
-
-    # --- DeleteSubject should be $false ---
-    if ($calProc.DeleteSubject -eq $false) {
-        $details = "DeleteSubject is disabled (meeting subject visible on console)."
-        $status = 'pass'
-    }
-    else {
-        $details = "DeleteSubject is enabled — meeting subjects will not display on the console."
-        $status = 'fail'
-    }
-    $results += [PSCustomObject]@{
-        CheckId    = 'calendar-processing-delete-subject'
-        CategoryId = 'calendar'
-        Status     = $status
-        Details    = $details
-        RawData    = @{ DeleteSubject = $calProc.DeleteSubject }
-    }
-
-    # --- AddOrganizerToSubject should be $false ---
-    if ($calProc.AddOrganizerToSubject -eq $false) {
-        $details = "AddOrganizerToSubject is disabled (subject not overwritten with organizer name)."
-        $status = 'pass'
-    }
-    else {
-        $details = "AddOrganizerToSubject is enabled — the meeting subject will be replaced with the organizer's name."
-        $status = 'warning'
-    }
-    $results += [PSCustomObject]@{
-        CheckId    = 'calendar-processing-add-organizer'
-        CategoryId = 'calendar'
-        Status     = $status
-        Details    = $details
-        RawData    = @{ AddOrganizerToSubject = $calProc.AddOrganizerToSubject }
-    }
-
-    # --- RemovePrivateProperty should be $false ---
-    if ($calProc.RemovePrivateProperty -eq $false) {
-        $details = "RemovePrivateProperty is disabled (private flag preserved)."
-        $status = 'pass'
-    }
-    else {
-        $details = "RemovePrivateProperty is enabled — private meetings will not be marked as such."
-        $status = 'warning'
-    }
-    $results += [PSCustomObject]@{
-        CheckId    = 'calendar-processing-private-property'
-        CategoryId = 'calendar'
-        Status     = $status
-        Details    = $details
-        RawData    = @{ RemovePrivateProperty = $calProc.RemovePrivateProperty }
-    }
-
-    return $results
 }
 
 function Test-ExternalMeetingProcessing {
@@ -140,7 +104,7 @@ function Test-ExternalMeetingProcessing {
     }
     catch {
         return [PSCustomObject]@{
-            CheckId    = 'external-meeting-processing'
+            CheckId    = 'cal-external-meeting-processing'
             CategoryId = 'calendar'
             Status     = 'fail'
             Details    = "Failed to retrieve calendar processing for '$Identity': $($_.Exception.Message)"
@@ -150,19 +114,19 @@ function Test-ExternalMeetingProcessing {
 
     if ($calProc.ProcessExternalMeetingMessages -eq $true) {
         return [PSCustomObject]@{
-            CheckId    = 'external-meeting-processing'
+            CheckId    = 'cal-external-meeting-processing'
             CategoryId = 'calendar'
             Status     = 'pass'
-            Details    = "ProcessExternalMeetingMessages is enabled — external meeting invitations are auto-processed."
+            Details    = "ProcessExternalMeetingMessages is enabled - external meeting invitations are auto-processed."
             RawData    = @{ ProcessExternalMeetingMessages = $true }
         }
     }
     else {
         return [PSCustomObject]@{
-            CheckId    = 'external-meeting-processing'
+            CheckId    = 'cal-external-meeting-processing'
             CategoryId = 'calendar'
             Status     = 'fail'
-            Details    = "ProcessExternalMeetingMessages is disabled — external meeting invitations will be ignored."
+            Details    = "ProcessExternalMeetingMessages is disabled - external meeting invitations will be ignored."
             RawData    = @{ ProcessExternalMeetingMessages = $false }
         }
     }

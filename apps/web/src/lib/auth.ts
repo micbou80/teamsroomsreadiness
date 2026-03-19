@@ -10,7 +10,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       authorization: {
         url: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/authorize`,
         params: {
-          scope: 'openid profile email offline_access User.Read.All Organization.Read.All Policy.Read.All Directory.Read.All MailboxSettings.Read DeviceManagementManagedDevices.Read.All',
+          scope: 'openid profile email offline_access User.Read.All Organization.Read.All Policy.Read.All Directory.Read.All MailboxSettings.Read DeviceManagementManagedDevices.Read.All Place.Read.All',
         },
       },
       token: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
@@ -18,13 +18,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, account }) {
+    async jwt({ token, account, profile }) {
       // Persist the access token and tenant ID from the initial sign-in
       if (account) {
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at;
-        token.tenantId = String(account.provider_account_id ?? '').split('.')[1] ?? '';
+        // Extract tenant ID from the id_token tid claim, or from the issuer URL
+        const tid = (profile as any)?.tid
+          ?? (account as any)?.tid
+          ?? String(account.provider_account_id ?? '').split('.')[1]
+          ?? process.env.AZURE_AD_TENANT_ID
+          ?? '';
+        token.tenantId = tid;
       }
       return token;
     },

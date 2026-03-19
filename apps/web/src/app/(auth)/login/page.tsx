@@ -1,15 +1,22 @@
 'use client';
 
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Title1,
   Text,
   Button,
   Card,
+  Divider,
   tokens,
 } from '@fluentui/react-components';
-import { Shield24Regular } from '@fluentui/react-icons';
+import { Shield24Regular, Play24Regular } from '@fluentui/react-icons';
+import { signInWithMicrosoft } from './actions';
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get('callbackUrl') || '/assessment';
+
   return (
     <div
       style={{
@@ -30,18 +37,40 @@ export default function LoginPage() {
           Sign in with your Microsoft 365 admin account to assess your tenant&apos;s
           readiness for Teams Rooms deployment.
         </Text>
+        <form action={signInWithMicrosoft}>
+          <input type="hidden" name="callbackUrl" value={callbackUrl} />
+          <Button
+            type="submit"
+            appearance="primary"
+            size="large"
+          >
+            Sign in with Microsoft
+          </Button>
+        </form>
+
+        <Divider style={{ margin: '24px 0' }}>or</Divider>
+
         <Button
-          appearance="primary"
+          appearance="secondary"
           size="large"
-          onClick={() => import('next-auth/react').then(({ signIn }) => signIn('microsoft-entra-id', { callbackUrl: '/assessment' }))}
+          icon={<Play24Regular />}
+          onClick={() => router.push('/assessment?demo=true')}
         >
-          Sign in with Microsoft
+          Try Demo Mode
         </Button>
+        <Text
+          size={100}
+          style={{ display: 'block', marginTop: '8px', color: tokens.colorNeutralForeground4 }}
+        >
+          Explore the tool with simulated assessment data.
+          No sign-in required.
+        </Text>
+
         <Text
           size={100}
           style={{ display: 'block', marginTop: '24px', color: tokens.colorNeutralForeground4 }}
         >
-          Requires Global Reader or Teams Administrator role.
+          Microsoft sign-in requires Global Reader or Teams Administrator role.
           Only read-only permissions are requested.
         </Text>
       </Card>

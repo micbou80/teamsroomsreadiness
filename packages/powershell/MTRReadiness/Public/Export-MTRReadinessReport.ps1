@@ -30,8 +30,8 @@ function Export-MTRReadinessReport {
         $CheckResults = Invoke-MTRReadinessCheck @params -PassThru
     }
 
-    $hostname = $env:COMPUTERNAME ?? (hostname)
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC' -AsUTC
+    $hostname = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { hostname }
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
 
     $passed = ($CheckResults | Where-Object { $_.Status -eq 'pass' }).Count
     $failed = ($CheckResults | Where-Object { $_.Status -eq 'fail' }).Count

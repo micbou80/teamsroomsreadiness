@@ -26,7 +26,7 @@ export const pmpConnectivityCheck: CheckDefinition = {
         status: 'pending',
         details:
           'PowerShell data has not been uploaded. Run the companion PowerShell script on the Teams Rooms device to test ' +
-          'reachability of the Pro Management Portal URLs (e.g., *.rooms.teams.microsoft.com) and upload the results.',
+          'reachability of the Pro Management Portal (https://portal.rooms.microsoft.com/) and upload the results.',
         remediation: 'Run the PowerShell collection script on each Teams Rooms device and upload the JSON results.',
       };
     }

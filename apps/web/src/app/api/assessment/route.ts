@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { decode } from '@auth/core/jwt';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { createGraphClient } from '@/lib/graph-client';
+import { getExchangeToken } from '@/lib/exchange-token';
 import { runAssessment } from '@/checks/engine';
 import { getAllChecks, categories } from '@/checks/registry';
 import type {
@@ -10,8 +13,10 @@ import type {
   CategoryResult,
   CheckResult,
   CheckStatus,
+  DeviceType,
 } from '@/checks/types';
 import { computeCategoryScore, computeOverallScore, deriveStatus } from '@/checks/scoring';
+import { isCheckRelevant } from '@/checks/device-relevance';
 
 // Import all check category index files to register checks
 import '@/checks/licensing';
@@ -38,8 +43,14 @@ function randomStatus(): CheckStatus {
   return 'info';
 }
 
-function generateDemoAssessment(): Assessment {
-  const allChecks = getAllChecks();
+function generateDemoAssessment(deviceTypes?: DeviceType[]): Assessment {
+  const allRegistered = getAllChecks();
+  const selectedDevices = deviceTypes && deviceTypes.length > 0
+    ? new Set<DeviceType>(deviceTypes)
+    : null;
+  const allChecks = selectedDevices
+    ? allRegistered.filter((c) => isCheckRelevant(c.id, selectedDevices))
+    : allRegistered;
   const now = new Date().toISOString();
 
   const results: CheckResult[] = allChecks.map((check) => ({
@@ -96,25 +107,55 @@ export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const isDemo = searchParams.get('demo') === 'true';
 
+  // Parse request body for device types
+  let deviceTypes: DeviceType[] | undefined;
+  try {
+    const body = await request.json().catch(() => ({}));
+    if (Array.isArray(body.deviceTypes)) {
+      deviceTypes = body.deviceTypes;
+    }
+  } catch {
+    // No body or invalid JSON — continue without device filter
+  }
+
   let assessment: Assessment;
 
   if (isDemo) {
     // Demo mode: generate sample results without real Azure AD
-    assessment = generateDemoAssessment();
+    assessment = generateDemoAssessment(deviceTypes);
   } else {
     // Real mode: requires authenticated session with access token
-    const session = await auth();
-    if (!session?.tenantId) {
+    // Read chunked session cookie (authjs splits large JWTs into .0, .1, etc.)
+    const cookieStore = await cookies();
+    const allCookies = cookieStore.getAll();
+    const prefix = allCookies.some(c => c.name.startsWith('__Secure-authjs.session-token'))
+      ? '__Secure-authjs.session-token'
+      : 'authjs.session-token';
+
+    // Reassemble chunked cookie
+    let sessionToken = cookieStore.get(prefix)?.value;
+    if (!sessionToken) {
+      const chunks: string[] = [];
+      for (let i = 0; ; i++) {
+        const chunk = cookieStore.get(`${prefix}.${i}`)?.value;
+        if (!chunk) break;
+        chunks.push(chunk);
+      }
+      if (chunks.length > 0) sessionToken = chunks.join('');
+    }
+
+    if (!sessionToken) {
       return NextResponse.json(
         { error: 'Not authenticated. Please sign in with your Microsoft account.' },
         { status: 401 },
       );
     }
 
-    // Retrieve access token from the JWT (server-side only)
-    // The token is stored by the jwt callback in auth.ts
-    const tokenRes = await auth();
-    const accessToken = (tokenRes as any)?.accessToken as string | undefined;
+    const secret = process.env.AUTH_SECRET!;
+    const decoded = await decode({ token: sessionToken, secret, salt: prefix });
+    const accessToken = decoded?.accessToken as string | undefined;
+    const tenantIdFromJwt = decoded?.tenantId as string | undefined;
+
     if (!accessToken) {
       return NextResponse.json(
         { error: 'Access token expired. Please sign in again.' },
@@ -122,12 +163,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const tenantId = tenantIdFromJwt || process.env.AZURE_AD_TENANT_ID || '';
+
     const graphClient = createGraphClient(accessToken);
+
+    // Acquire Exchange Online token (optional — enables automatic calendar checks)
+    const exchangeToken = await getExchangeToken(tenantId) ?? undefined;
 
     try {
       assessment = await runAssessment({
         graphClient,
-        tenantId: session.tenantId,
+        tenantId,
+        exchangeToken,
+        selectedDevices: deviceTypes && deviceTypes.length > 0
+          ? new Set<DeviceType>(deviceTypes)
+          : undefined,
         config: {
           namingConventionPrefix: 'MTR-',
           expectedTimezones: {},
@@ -142,17 +192,15 @@ export async function POST(request: NextRequest) {
 
   // Persist to database
   try {
-    // Ensure tenant record exists for demo mode
-    if (isDemo) {
-      await prisma.tenant.upsert({
-        where: { tenantId: DEMO_TENANT_ID },
-        update: {},
-        create: {
-          tenantId: DEMO_TENANT_ID,
-          displayName: 'Demo Tenant',
-        },
-      });
-    }
+    // Ensure tenant record exists
+    await prisma.tenant.upsert({
+      where: { tenantId: assessment.tenantId },
+      update: {},
+      create: {
+        tenantId: assessment.tenantId,
+        displayName: isDemo ? 'Demo Tenant' : assessment.tenantId,
+      },
+    });
 
     await prisma.assessment.create({
       data: {

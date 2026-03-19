@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 
 export default function DashboardLayout({
@@ -6,8 +7,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <DashboardShell>
-      {children}
-    </DashboardShell>
+    <Suspense>
+      <DashboardShell>
+        {children}
+      </DashboardShell>
+    </Suspense>
   );
 }
