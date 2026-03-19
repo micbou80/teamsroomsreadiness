@@ -107,7 +107,6 @@ export interface AssessmentConfig {
   expectedTimezones: Record<string, string>;
   includeVoiceChecks: boolean;
   pstnModel?: 'calling-plan' | 'direct-routing' | 'operator-connect';
-  preCheckConfirmations?: string[];
 }
 
 export interface PowerShellUpload {

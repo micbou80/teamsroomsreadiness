@@ -108,14 +108,10 @@ export async function POST(request: NextRequest) {
 
   // Parse request body for device types and pre-check confirmations
   let deviceTypes: DeviceType[] | undefined;
-  let preCheckConfirmations: string[] | undefined;
   try {
     const body = await request.json().catch(() => ({}));
     if (Array.isArray(body.deviceTypes)) {
       deviceTypes = body.deviceTypes;
-    }
-    if (Array.isArray(body.preCheckConfirmations)) {
-      preCheckConfirmations = body.preCheckConfirmations;
     }
   } catch {
     // No body or invalid JSON — continue without device filter
@@ -185,7 +181,6 @@ export async function POST(request: NextRequest) {
           namingConventionPrefix: 'MTR-',
           expectedTimezones: {},
           includeVoiceChecks: true,
-          preCheckConfirmations,
         },
       });
     } catch (err) {
