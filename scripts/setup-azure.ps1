@@ -148,16 +148,12 @@ Write-Host "[4/6] Creating service principal..." -ForegroundColor Yellow
 
 $null = az ad sp create --id $clientId --output none 2>&1
 # May already exist — ignore errors
-Write-Host "  Service principal ready." -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # 5. Grant admin consent
 # ---------------------------------------------------------------------------
 
 Write-Host "[5/6] Granting admin consent for Graph permissions..." -ForegroundColor Yellow
-
-# Wait a moment for propagation
-Start-Sleep -Seconds 3
 
 $consentResult = az ad app permission admin-consent --id $clientId 2>&1
 if ($LASTEXITCODE -ne 0) {
