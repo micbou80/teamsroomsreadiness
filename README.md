@@ -55,10 +55,13 @@ The tool needs a registered app in your Azure AD tenant to authenticate users an
 
 Requires [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) to be installed.
 
+Open a PowerShell terminal in the repo root and run:
+
 ```powershell
-# Run from the repo root
 .\scripts\setup-azure.ps1
 ```
+
+The script will open a browser window prompting you to sign in to Azure.
 
 This script will:
 - Sign you in to Azure
