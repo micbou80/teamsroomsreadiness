@@ -27,7 +27,6 @@ import '@/checks/network';
 import '@/checks/platform';
 import '@/checks/security';
 import '@/checks/management';
-import '@/checks/voice';
 
 // ---------------------------------------------------------------------------
 // Demo mode helpers
