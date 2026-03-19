@@ -87,6 +87,82 @@ export async function getManagedDevices(client: Client) {
   });
 }
 
+/**
+ * Get detected Teams Rooms apps via Intune Detected Apps API.
+ * Requires DeviceManagementApps.Read.All permission.
+ */
+export async function getDetectedTeamsRoomsApp(client: Client) {
+  const response = await client
+    .api('/deviceManagement/detectedApps')
+    .filter("startswith(displayName,'Microsoft Teams Rooms')")
+    .expand('managedDevices($select=id,deviceName)')
+    .get();
+  return response.value as DetectedApp[];
+}
+
+/**
+ * Get all detected apps for a specific managed device.
+ * Requires DeviceManagementApps.Read.All permission.
+ */
+export async function getDetectedAppsForDevice(client: Client, deviceId: string) {
+  const response = await client
+    .api(`/deviceManagement/managedDevices/${deviceId}/detectedApps`)
+    .select('displayName,version')
+    .top(999)
+    .get();
+  return response.value as DetectedApp[];
+}
+
+/**
+ * Get hardware information for a managed device.
+ * Requires DeviceManagementManagedDevices.Read.All permission.
+ */
+export async function getManagedDeviceHardwareInfo(client: Client, deviceId: string) {
+  const response = await client
+    .api(`/deviceManagement/managedDevices/${deviceId}`)
+    .select('id,deviceName,hardwareInformation')
+    .get();
+  return response as ManagedDeviceHardwareInfo;
+}
+
+/**
+ * Get Windows Update for Business configuration rings.
+ * Requires DeviceManagementConfiguration.Read.All permission.
+ */
+export async function getWindowsUpdateRings(client: Client) {
+  const response = await client
+    .api('/deviceManagement/deviceConfigurations')
+    .filter("isof('microsoft.graph.windowsUpdateForBusinessConfiguration')")
+    .select('id,displayName,featureUpdatesDeferralPeriodInDays,qualityUpdatesDeferralPeriodInDays,assignments')
+    .get();
+  return response.value as WindowsUpdateRing[];
+}
+
+/**
+ * Get device local credentials (LAPS) for a device.
+ * Requires DeviceLocalCredential.ReadBasic.All permission.
+ */
+export async function getDeviceLocalCredentials(client: Client, deviceId: string) {
+  const response = await client
+    .api(`/deviceLocalCredentials/${deviceId}`)
+    .select('deviceName,lastBackupDateTime')
+    .get();
+  return response as DeviceLocalCredential;
+}
+
+/**
+ * Get Windows devices from directory (for LAPS check).
+ */
+export async function getDirectoryDevices(client: Client) {
+  const response = await client
+    .api('/devices')
+    .filter("operatingSystem eq 'Windows'")
+    .select('id,displayName,isManaged')
+    .top(999)
+    .get();
+  return response.value as DirectoryDevice[];
+}
+
 // Type definitions for Graph responses
 export interface SubscribedSku {
   skuId: string;
@@ -152,4 +228,41 @@ export interface ManagedDevice {
   model: string;
   manufacturer: string;
   operatingSystem: string;
+}
+
+export interface DetectedApp {
+  id?: string;
+  displayName: string;
+  version?: string;
+  sizeInByte?: number;
+  deviceCount?: number;
+  managedDevices?: { id: string; deviceName: string }[];
+}
+
+export interface ManagedDeviceHardwareInfo {
+  id: string;
+  deviceName: string;
+  hardwareInformation?: {
+    operatingSystemEdition?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface WindowsUpdateRing {
+  id: string;
+  displayName: string;
+  featureUpdatesDeferralPeriodInDays?: number;
+  qualityUpdatesDeferralPeriodInDays?: number;
+  assignments?: { id: string; target: Record<string, unknown> }[];
+}
+
+export interface DeviceLocalCredential {
+  deviceName: string;
+  lastBackupDateTime?: string;
+}
+
+export interface DirectoryDevice {
+  id: string;
+  displayName: string;
+  isManaged?: boolean;
 }

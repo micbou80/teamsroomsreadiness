@@ -1,5 +1,5 @@
 import { CheckDefinition, CheckResult } from '../types';
-import { getManagedDevices } from '../../lib/graph-queries';
+import { getManagedDevices, getManagedDeviceHardwareInfo } from '../../lib/graph-queries';
 
 export const osSkuCheck: CheckDefinition = {
   id: 'platform-os-sku',
@@ -32,15 +32,68 @@ export const osSkuCheck: CheckDefinition = {
         };
       }
 
-      // OS SKU information is not reliably available from the Intune managed device API.
-      // We report this as info so an admin can verify on-device.
+      const compliantDevices: { deviceName: string; edition: string }[] = [];
+      const nonCompliantDevices: { deviceName: string; edition: string }[] = [];
+      const unknownDevices: string[] = [];
+
+      // Check hardware info for each device to determine OS edition
+      const hwResults = await Promise.allSettled(
+        devices.map(async (device) => {
+          try {
+            const hwInfo = await getManagedDeviceHardwareInfo(context.graphClient, device.id);
+            const edition = hwInfo.hardwareInformation?.operatingSystemEdition ?? '';
+            return { deviceName: device.deviceName, edition };
+          } catch {
+            return { deviceName: device.deviceName, edition: '' };
+          }
+        }),
+      );
+
+      for (const result of hwResults) {
+        if (result.status !== 'fulfilled') continue;
+        const { deviceName, edition } = result.value;
+        const editionLower = edition.toLowerCase();
+
+        if (!edition) {
+          unknownDevices.push(deviceName);
+        } else if (editionLower.includes('iot') || editionLower.includes('enterprise')) {
+          compliantDevices.push({ deviceName, edition });
+        } else {
+          nonCompliantDevices.push({ deviceName, edition });
+        }
+      }
+
+      if (nonCompliantDevices.length === 0 && unknownDevices.length === 0) {
+        return {
+          ...base,
+          status: 'pass',
+          details:
+            `All ${compliantDevices.length} device(s) are running a supported Windows edition (IoT Enterprise or Enterprise).`,
+          rawData: { compliantDevices },
+        };
+      }
+
+      if (nonCompliantDevices.length > 0) {
+        return {
+          ...base,
+          status: 'fail',
+          details:
+            `${nonCompliantDevices.length} device(s) are not running a supported Windows edition: ` +
+            nonCompliantDevices.map((d) => `${d.deviceName} (${d.edition})`).join(', ') + '.',
+          remediation:
+            'Teams Rooms devices should run Windows IoT Enterprise or Windows Enterprise (GA channel). Re-image non-compliant devices.',
+          rawData: { compliantDevices, nonCompliantDevices, unknownDevices },
+        };
+      }
+
+      // Only unknown devices — report as info
       return {
         ...base,
         status: 'info',
         details:
-          `Found ${devices.length} managed device(s). OS SKU (IoT Enterprise vs. Enterprise) cannot be reliably determined from Intune device properties alone. ` +
-          'Please verify on-device that each console is running Windows IoT Enterprise or Enterprise (GA channel).',
-        rawData: { devices: devices.map((d) => ({ deviceName: d.deviceName, operatingSystem: d.operatingSystem, model: d.model })) },
+          `Could not determine OS edition for ${unknownDevices.length} device(s): ${unknownDevices.join(', ')}. ` +
+          'Hardware information may not be available for these devices. Verify on-device.',
+        rawData: { compliantDevices, unknownDevices },
       };
     } catch (error) {
       const isPermissionError =
@@ -56,8 +109,7 @@ export const osSkuCheck: CheckDefinition = {
           status: 'warning',
           details: 'DeviceManagementManagedDevices.Read.All permission is not granted.',
           remediation:
-            'Grant the DeviceManagementManagedDevices.Read.All delegated permission in Azure Portal → App registrations → [your app] → API permissions, then re-run the assessment.',
-          docUrl: this.docUrl,
+            'Grant the DeviceManagementManagedDevices.Read.All delegated permission in Azure Portal, then re-run the assessment.',
         };
       }
 

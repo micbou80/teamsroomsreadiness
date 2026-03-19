@@ -67,3 +67,25 @@ export const EWS_FULL_SHUTDOWN = '2027-04-01';
 
 // Windows 10 support end
 export const WINDOWS_10_SUPPORT_END = '2025-10-14';
+
+// Allowed software prefixes for Teams Rooms devices (security-no-unsupported-software check)
+export const MTR_ALLOWED_SOFTWARE_PREFIXES = [
+  'Microsoft Teams Rooms',
+  'Microsoft Teams',
+  'Windows',
+  'Microsoft Visual C++',
+  'Microsoft Edge',
+  'Microsoft .NET',
+  'Microsoft Update',
+  'Skype',
+  'Intel',
+  'NVIDIA',
+  'Logitech',
+  'Yealink',
+  'Poly',
+  'Crestron',
+  'Lenovo',
+  'Dell',
+  'HP ',
+  'Hewlett',
+];

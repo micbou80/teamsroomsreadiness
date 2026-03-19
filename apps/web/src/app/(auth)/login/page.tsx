@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Title1,
@@ -12,7 +13,7 @@ import {
 import { Shield24Regular, Play24Regular } from '@fluentui/react-icons';
 import { signInWithMicrosoft } from './actions';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/assessment';
@@ -75,5 +76,13 @@ export default function LoginPage() {
         </Text>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

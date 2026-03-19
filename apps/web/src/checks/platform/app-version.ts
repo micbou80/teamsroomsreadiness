@@ -1,6 +1,8 @@
 import { CheckDefinition, CheckResult } from '../types';
-import { getManagedDevices } from '../../lib/graph-queries';
+import { getDetectedTeamsRoomsApp } from '../../lib/graph-queries';
 import { MIN_TEAMS_ROOMS_APP_VERSION } from '../../lib/constants';
+
+// Requires: DeviceManagementApps.Read.All delegated permission
 
 /**
  * Compare two dotted version strings (e.g. "5.0.0.0").
@@ -38,28 +40,56 @@ export const appVersionCheck: CheckDefinition = {
     } as const;
 
     try {
-      const devices = await getManagedDevices(context.graphClient);
+      const detectedApps = await getDetectedTeamsRoomsApp(context.graphClient);
 
-      if (devices.length === 0) {
+      if (detectedApps.length === 0) {
         return {
           ...base,
-          status: 'not-applicable',
-          details: 'No managed Teams Rooms devices found in Intune.',
+          status: 'info',
+          details:
+            'No "Microsoft Teams Rooms" detected app found in Intune. Devices may not be Intune-enrolled, or the DeviceManagementApps.Read.All permission may be missing.',
+          remediation:
+            'Ensure devices are enrolled in Intune and the app registration has DeviceManagementApps.Read.All permission.',
         };
       }
 
-      // The Teams Rooms app version is not directly exposed in the managedDevice resource.
-      // If detected apps data is available in rawData we would check it here.
-      // For now, we report info and recommend verifying via Pro Management Portal.
+      const outdatedDevices: { deviceName: string; appVersion: string }[] = [];
+      const compliantDevices: string[] = [];
+
+      for (const app of detectedApps) {
+        const version = app.version ?? '0.0.0.0';
+        const devices = app.managedDevices ?? [];
+
+        if (compareVersions(version, MIN_TEAMS_ROOMS_APP_VERSION) < 0) {
+          for (const device of devices) {
+            outdatedDevices.push({ deviceName: device.deviceName, appVersion: version });
+          }
+        } else {
+          for (const device of devices) {
+            compliantDevices.push(device.deviceName);
+          }
+        }
+      }
+
+      if (outdatedDevices.length === 0) {
+        return {
+          ...base,
+          status: 'pass',
+          details:
+            `All ${compliantDevices.length} device(s) are running Teams Rooms app version >= ${MIN_TEAMS_ROOMS_APP_VERSION}.`,
+          rawData: { compliantDevices, minVersion: MIN_TEAMS_ROOMS_APP_VERSION },
+        };
+      }
+
       return {
         ...base,
-        status: 'info',
+        status: 'fail',
         details:
-          `Found ${devices.length} managed device(s). The Teams Rooms app version (minimum ${MIN_TEAMS_ROOMS_APP_VERSION}) ` +
-          'should be verified via the Teams Rooms Pro Management Portal or on-device. ' +
-          'Intune managed device properties do not expose the Teams Rooms application version directly.',
-        remediation: 'Use the Pro Management Portal or check Settings > About on each device to confirm the app version.',
-        rawData: { devices: devices.map((d) => ({ deviceName: d.deviceName, model: d.model })), minVersion: MIN_TEAMS_ROOMS_APP_VERSION },
+          `${outdatedDevices.length} device(s) are running a Teams Rooms app version below ${MIN_TEAMS_ROOMS_APP_VERSION}: ` +
+          outdatedDevices.map((d) => `${d.deviceName} (${d.appVersion})`).join(', ') + '.',
+        remediation:
+          'Update the Teams Rooms app on affected devices via the Pro Management Portal or Windows Update.',
+        rawData: { outdatedDevices, compliantDevices, minVersion: MIN_TEAMS_ROOMS_APP_VERSION },
       };
     } catch (error) {
       const isPermissionError =
@@ -73,18 +103,17 @@ export const appVersionCheck: CheckDefinition = {
         return {
           ...base,
           status: 'warning',
-          details: 'DeviceManagementManagedDevices.Read.All permission is not granted.',
+          details: 'DeviceManagementApps.Read.All permission is not granted.',
           remediation:
-            'Grant the DeviceManagementManagedDevices.Read.All delegated permission in Azure Portal → App registrations → [your app] → API permissions, then re-run the assessment.',
-          docUrl: this.docUrl,
+            'Grant the DeviceManagementApps.Read.All delegated permission in Azure Portal, then re-run the assessment.',
         };
       }
 
       return {
         ...base,
         status: 'warning',
-        details: `Unable to query managed devices: ${error instanceof Error ? error.message : String(error)}`,
-        remediation: 'Ensure the app has DeviceManagementManagedDevices.Read.All permission.',
+        details: `Unable to query detected apps: ${error instanceof Error ? error.message : String(error)}`,
+        remediation: 'Ensure the app has DeviceManagementApps.Read.All permission.',
       };
     }
   },

@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id';
 
 const AZURE_AD_SCOPES =
-  'openid profile email offline_access User.Read.All Organization.Read.All Policy.Read.All Directory.Read.All MailboxSettings.Read DeviceManagementManagedDevices.Read.All Place.Read.All';
+  'openid profile email offline_access User.Read.All Organization.Read.All Policy.Read.All Directory.Read.All MailboxSettings.Read DeviceManagementManagedDevices.Read.All DeviceManagementApps.Read.All DeviceManagementConfiguration.Read.All DeviceLocalCredential.ReadBasic.All Place.Read.All';
 
 /**
  * Use the refresh token to obtain a new access token from Microsoft Entra ID.

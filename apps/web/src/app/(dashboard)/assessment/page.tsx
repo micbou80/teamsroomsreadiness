@@ -292,6 +292,22 @@ export default function RunAssessmentPage() {
   const searchParams = useSearchParams();
   const demoMode = searchParams.get('demo') === 'true';
 
+  // Step 0: pre-flight confirmations
+  const PRE_CHECK_ITEMS: { id: string; label: string }[] = [
+    { id: 'net-udp-ports-reachable', label: 'UDP ports 3478\u20133481 are open from the room network to Microsoft Teams relay servers' },
+    { id: 'net-tcp-443-reachable', label: 'TCP port 443 is open from the room network to *.teams.microsoft.com, *.skype.com, and *.lync.com' },
+    { id: 'net-no-proxy-auth', label: 'No proxy requiring authentication is configured on the room network' },
+    { id: 'net-tls-inspection-bypass', label: 'TLS/SSL inspection is bypassed for Microsoft Teams traffic on your firewall or proxy' },
+    { id: 'net-websocket-permitted', label: 'WebSocket connections (wss://) are permitted from the room network' },
+    { id: 'net-bandwidth-adequate', label: 'Room network has at least 10 Mbps downstream / 5 Mbps upstream dedicated to Teams traffic' },
+    { id: 'management-pmp-connectivity', label: 'Teams Rooms devices can reach https://portal.rooms.microsoft.com/ from the room network' },
+  ];
+
+  const [preCheckConfirmed, setPreCheckConfirmed] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(PRE_CHECK_ITEMS.map((item) => [item.id, false])),
+  );
+  const allPreChecksConfirmed = PRE_CHECK_ITEMS.every((item) => preCheckConfirmed[item.id]);
+
   const [selectedDevices, setSelectedDevices] = useState<Set<DeviceType>>(
     new Set(['teams-rooms-windows']),
   );
@@ -360,7 +376,10 @@ export default function RunAssessmentPage() {
       const res = await fetch(`/api/assessment${queryParam}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceTypes: Array.from(selectedDevices) }),
+        body: JSON.stringify({
+          deviceTypes: Array.from(selectedDevices),
+          preCheckConfirmations: PRE_CHECK_ITEMS.filter((item) => preCheckConfirmed[item.id]).map((item) => item.id),
+        }),
       });
 
       clearInterval(timer);
@@ -590,6 +609,16 @@ export default function RunAssessmentPage() {
       <div className={styles.stepIndicator}>
         <div className={styles.step}>
           <span
+            className={`${styles.stepNum} ${allPreChecksConfirmed ? styles.stepDone : !step1Done && !running ? styles.stepActive : styles.stepPending}`}
+          >
+            {allPreChecksConfirmed ? <Checkmark24Regular style={{ fontSize: '14px' }} /> : '0'}
+          </span>
+          <Text size={200} weight={!allPreChecksConfirmed && !step1Done && !running ? 'semibold' : allPreChecksConfirmed ? 'semibold' : 'regular'}>
+            Pre-flight Checks
+          </Text>
+        </div>
+        <div className={styles.step}>
+          <span
             className={`${styles.stepNum} ${step1Done ? styles.stepDone : running ? styles.stepActive : styles.stepPending}`}
           >
             {step1Done ? <Checkmark24Regular style={{ fontSize: '14px' }} /> : '1'}
@@ -606,8 +635,39 @@ export default function RunAssessmentPage() {
         </div>
       </div>
 
-      {/* Onboarding: device selection — shown before starting */}
+      {/* Step 0: Pre-flight checks — shown before starting, before device selection */}
       {!step1Done && !running && (
+        <Card className={styles.card}>
+          <Title3 as="h2">Pre-flight checks</Title3>
+          <Text
+            size={200}
+            style={{ display: 'block', marginTop: '4px', color: tokens.colorNeutralForeground3 }}
+          >
+            Confirm the following before running the assessment. These cannot be verified automatically.
+          </Text>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+            {PRE_CHECK_ITEMS.map((item) => (
+              <Checkbox
+                key={item.id}
+                checked={preCheckConfirmed[item.id]}
+                onChange={(_, data) =>
+                  setPreCheckConfirmed((prev) => ({ ...prev, [item.id]: !!data.checked }))
+                }
+                label={item.label}
+              />
+            ))}
+          </div>
+          <Text
+            size={100}
+            style={{ display: 'block', marginTop: '16px', color: tokens.colorNeutralForeground3, fontStyle: 'italic' }}
+          >
+            These will be marked as passed in your assessment report.
+          </Text>
+        </Card>
+      )}
+
+      {/* Onboarding: device selection — shown before starting, only when pre-checks confirmed */}
+      {!step1Done && !running && allPreChecksConfirmed && (
         <Card className={styles.card}>
           <Title3 as="h2">What are you deploying?</Title3>
           <Text
@@ -672,7 +732,7 @@ export default function RunAssessmentPage() {
           }
         />
 
-        {!step1Done && (
+        {!step1Done && allPreChecksConfirmed && (
           <div className={styles.controls}>
             <Button
               appearance="primary"
@@ -686,7 +746,7 @@ export default function RunAssessmentPage() {
           </div>
         )}
 
-        {selectedDevices.size === 0 && !running && !step1Done && (
+        {selectedDevices.size === 0 && !running && !step1Done && allPreChecksConfirmed && (
           <MessageBar intent="warning" style={{ marginTop: '16px' }}>
             <MessageBarBody>
               Select at least one device type above to start the assessment.
@@ -694,7 +754,7 @@ export default function RunAssessmentPage() {
           </MessageBar>
         )}
 
-        {demoMode && !running && !step1Done && selectedDevices.size > 0 && (
+        {demoMode && !running && !step1Done && allPreChecksConfirmed && selectedDevices.size > 0 && (
           <MessageBar intent="info" style={{ marginTop: '16px' }}>
             <MessageBarBody>
               <MessageBarTitle>Demo Mode</MessageBarTitle>

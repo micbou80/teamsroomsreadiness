@@ -657,7 +657,6 @@ export default function DashboardHome() {
                   <React.Fragment key={check.checkId}>
                     <tr
                       className={`${styles.row} ${isExpanded ? styles.rowExpanded : ''}`}
-                      className={`${styles.row} ${isExpanded ? styles.rowExpanded : ''}`}
                       onClick={() => hasDetails && setExpandedCheckId(isExpanded ? null : check.checkId)}
                     >
                       <td className={styles.td}>
