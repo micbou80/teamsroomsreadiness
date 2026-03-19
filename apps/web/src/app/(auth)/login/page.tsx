@@ -31,10 +31,9 @@ export default function LoginPage() {
           readiness for Teams Rooms deployment.
         </Text>
         <Button
-          as="a"
-          href="/api/auth/signin/microsoft-entra-id"
           appearance="primary"
           size="large"
+          onClick={() => import('next-auth/react').then(({ signIn }) => signIn('microsoft-entra-id', { callbackUrl: '/assessment' }))}
         >
           Sign in with Microsoft
         </Button>

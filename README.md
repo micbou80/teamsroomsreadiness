@@ -15,28 +15,85 @@ An open-source tool to validate your Microsoft 365 tenant configuration before d
 - **PowerShell Module**: `MTRReadiness` — Exchange Online calendar processing + network connectivity checks that require local execution
 - **Upload flow**: PowerShell results exported as JSON and merged with Graph results via the upload API
 
-## Quick Start
+---
 
-### Prerequisites
+## Setup: Web Dashboard
+
+### 1. Prerequisites
 
 - Node.js 18+
 - npm 9+
-- An Azure AD app registration (for Graph API access)
+- A Microsoft 365 tenant with admin access
+- An Azure AD app registration (see step 2)
 
-### Web Dashboard
+---
+
+### 2. Create an Azure AD App Registration
+
+1. Go to [portal.azure.com](https://portal.azure.com) → **Microsoft Entra ID** → **App registrations** → **New registration**
+2. Set a name (e.g. `Teams Rooms Readiness`)
+3. Supported account types: **Single tenant**
+4. Redirect URI: `Web` → `http://localhost:3000/api/auth/callback/microsoft-entra-id`
+5. Click **Register** — copy the **Application (client) ID** and **Directory (tenant) ID**
+
+**Add a client secret:**
+
+6. Go to **Certificates & secrets** → **New client secret**
+7. Set an expiry → click **Add** → copy the **Value** immediately (it won't be shown again)
+
+**Grant API permissions** (Microsoft Graph → Delegated):
+
+8. Go to **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**, and add:
+   - `User.Read.All`
+   - `Organization.Read.All`
+   - `Policy.Read.All`
+   - `Directory.Read.All`
+   - `MailboxSettings.Read`
+   - `DeviceManagementManagedDevices.Read.All`
+9. Click **Grant admin consent for [your tenant]**
+
+---
+
+### 3. Configure Environment Variables
+
+Create two files in `apps/web/`:
+
+**`apps/web/.env`** — read by Prisma:
+```
+DATABASE_URL="file:./dev.db"
+```
+
+**`apps/web/.env.local`** — read by Next.js:
+```
+AZURE_AD_CLIENT_ID=your-client-id
+AZURE_AD_CLIENT_SECRET=your-client-secret
+AZURE_AD_TENANT_ID=your-directory-tenant-id
+
+AUTH_SECRET=your-random-secret        # generate with: openssl rand -base64 32
+NEXTAUTH_URL=http://localhost:3000
+```
+
+> **Note:** `AUTH_SECRET` (not `NEXTAUTH_SECRET`) is required by NextAuth v5.
+
+---
+
+### 4. Install and Run
 
 ```bash
 cd apps/web
-cp .env.example .env      # Edit with your Azure AD credentials
 npm install
 npx prisma generate
 npx prisma db push
 npm run dev
 ```
 
-Open http://localhost:3000. Use `?demo=true` on API routes to test without Azure AD.
+Open **http://localhost:3000** and click **Get Started** to sign in with your Microsoft 365 admin account.
 
-### PowerShell Module
+> Sign-in requires **Global Reader** or **Teams Administrator** role. All permissions are read-only.
+
+---
+
+## Setup: PowerShell Module
 
 ```powershell
 # Import the module
@@ -53,12 +110,15 @@ Invoke-MTRReadinessCheck -RoomMailboxes 'mtr-room1@contoso.com' -OutputPath './r
 Export-MTRReadinessReport -RoomMailboxes 'mtr-room1@contoso.com' -OutputPath './report.html'
 ```
 
-Upload the JSON output at `/upload` in the web dashboard to merge with Graph results.
+Upload the JSON output at `/upload` in the web dashboard to merge Exchange/network results with Graph API results.
+
+---
 
 ## Check Categories
 
 | Category | Checks | Source |
-|----------|--------|--------|
+|----------|--------|
+--------|
 | Licensing | 5 | Graph API |
 | Identity & Auth | 6 | Graph API |
 | Calendar | 5 | Graph + PowerShell |
@@ -69,16 +129,7 @@ Upload the JSON output at `/upload` in the web dashboard to merge with Graph res
 | Management | 3 | Graph + PowerShell |
 | Voice / PSTN | 3 | Manual |
 
-## Azure AD Permissions
-
-The app requires these **read-only** permissions (admin consent):
-
-- `User.Read.All` — resource account properties
-- `Organization.Read.All` — tenant license inventory
-- `Policy.Read.All` — Conditional Access policies
-- `Directory.Read.All` — group memberships
-- `MailboxSettings.Read` — basic mailbox settings
-- `DeviceManagementManagedDevices.Read.All` — Intune compliance
+---
 
 ## Tech Stack
 
@@ -90,6 +141,8 @@ The app requires these **read-only** permissions (admin consent):
 | Database | Prisma ORM, SQLite (dev) / PostgreSQL (prod) |
 | Export | jsPDF + jspdf-autotable (PDF), ExcelJS (Excel) |
 | PowerShell | ExchangeOnlineManagement, Pester v5 |
+
+---
 
 ## Project Structure
 
@@ -110,6 +163,24 @@ teamsroomsreadiness/
 │       └── Tests/               # Pester tests
 └── CLAUDE.md                    # Project conventions
 ```
+
+---
+
+## Troubleshooting
+
+**`AADSTS50194` — multi-tenant error**
+Your app registration is single-tenant but the auth config is using the `/common` endpoint. Ensure `AZURE_AD_TENANT_ID` is set correctly in `.env.local`.
+
+**`error=Configuration` on sign-in**
+`AUTH_SECRET` is missing or not set. NextAuth v5 requires `AUTH_SECRET` (not `NEXTAUTH_SECRET`).
+
+**Redirect loop after sign-in**
+Ensure the redirect URI in your Azure AD app registration exactly matches `http://localhost:3000/api/auth/callback/microsoft-entra-id`.
+
+**`DATABASE_URL` not found (Prisma)**
+Prisma reads from `.env`, not `.env.local`. Make sure `DATABASE_URL` is in `apps/web/.env`.
+
+---
 
 ## Contributing
 
