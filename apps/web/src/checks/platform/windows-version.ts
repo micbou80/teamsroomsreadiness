@@ -58,6 +58,24 @@ export const windowsVersionCheck: CheckDefinition = {
         rawData: { devices: devices.map((d) => ({ deviceName: d.deviceName, osVersion: d.osVersion })) },
       };
     } catch (error) {
+      const isPermissionError =
+        error instanceof Error &&
+        (error.message.includes('403') ||
+          error.message.toLowerCase().includes('forbidden') ||
+          error.message.toLowerCase().includes('permission') ||
+          error.message.toLowerCase().includes('authorization'));
+
+      if (isPermissionError) {
+        return {
+          ...base,
+          status: 'warning',
+          details: 'DeviceManagementManagedDevices.Read.All permission is not granted.',
+          remediation:
+            'Grant the DeviceManagementManagedDevices.Read.All delegated permission in Azure Portal → App registrations → [your app] → API permissions, then re-run the assessment.',
+          docUrl: this.docUrl,
+        };
+      }
+
       return {
         ...base,
         status: 'warning',

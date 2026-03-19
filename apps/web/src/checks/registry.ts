@@ -10,7 +10,6 @@ export const categories: CategoryDefinition[] = [
   { id: 'platform', name: 'Platform', description: 'Windows version, OS SKU, and app version baselines', icon: 'Desktop' },
   { id: 'security', name: 'Security', description: 'Defender, secure boot, admin credentials, and software posture', icon: 'LockClosed' },
   { id: 'management', name: 'Management', description: 'Pro Management Portal, Intune, and update rings', icon: 'Settings' },
-  { id: 'voice', name: 'Voice / PSTN', description: 'Calling plan, Direct Routing, and emergency calling', icon: 'Call' },
 ];
 
 // Mutable check registry — categories register their checks at import time

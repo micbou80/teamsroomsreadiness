@@ -18,7 +18,7 @@ export const adminPasswordChangedCheck: CheckDefinition = {
       severity: this.severity,
       docUrl: this.docUrl,
       timestamp: new Date().toISOString(),
-      status: 'pending',
+      status: 'info',
       details:
         'This check cannot be verified via API. Confirm on each Teams Rooms console that the local admin password has been changed from the factory default ("sfb").',
       remediation: 'Sign in to the admin account on each device and change the password to a strong, unique value.',
