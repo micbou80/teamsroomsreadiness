@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
+import path from 'path';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
@@ -59,9 +60,17 @@ export async function POST(request: NextRequest) {
   const baseUrl = origin.includes('://') ? origin : `${protocol}://${origin}`;
   const uploadUrl = `${baseUrl}/api/upload?token=${token}`;
 
+  // Derive the absolute path to the local PowerShell module.
+  // process.cwd() is apps/web when running Next.js — repo root is two levels up.
+  const psModulePath = path.resolve(
+    process.cwd(),
+    '../../packages/powershell/MTRReadiness/MTRReadiness.psd1',
+  );
+
   return NextResponse.json({
     token,
     uploadUrl,
+    psModulePath,
     expiresAt: expiresAt.toISOString(),
     assessmentId,
   });
