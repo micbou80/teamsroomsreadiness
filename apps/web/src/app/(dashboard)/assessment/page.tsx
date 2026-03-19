@@ -301,6 +301,7 @@ export default function RunAssessmentPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Assessment | null>(null);
   const [uploadUrl, setUploadUrl] = useState<string | null>(null);
+  const [psModuleAbsPath, setPsModuleAbsPath] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedFallback, setCopiedFallback] = useState(false);
   const [waitingForPs, setWaitingForPs] = useState(false);
@@ -469,6 +470,7 @@ export default function RunAssessmentPage() {
       .then((data) => {
         if (data.uploadUrl) {
           setUploadUrl(data.uploadUrl);
+          if (data.psModulePath) setPsModuleAbsPath(data.psModulePath);
           setWaitingForPs(true);
           initialPsMerged.current = result.metadata?.powershellChecksMerged ?? 0;
         }
@@ -553,10 +555,11 @@ export default function RunAssessmentPage() {
     return `${m}:${sec.toString().padStart(2, '0')}`;
   }
 
-  const psModulePath = process.env.NEXT_PUBLIC_PS_MODULE_PATH;
-  const psModuleLine = psModulePath
-    ? `Import-Module '${psModulePath}'`
-    : `Import-Module '.\\packages\\powershell\\MTRReadiness\\MTRReadiness.psd1'`;
+  const psModuleLine = psModuleAbsPath
+    ? `Import-Module '${psModuleAbsPath}'`
+    : (process.env.NEXT_PUBLIC_PS_MODULE_PATH
+        ? `Import-Module '${process.env.NEXT_PUBLIC_PS_MODULE_PATH}'`
+        : `Import-Module '.\\packages\\powershell\\MTRReadiness\\MTRReadiness.psd1'`);
   const psPrereqLine = `Install-Module ExchangeOnlineManagement -Scope CurrentUser # skip if already installed`;
 
   const copyCommand = useCallback(() => {
@@ -566,7 +569,7 @@ export default function RunAssessmentPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [uploadUrl, roomMailboxParam, psModuleLine]);
+  }, [uploadUrl, roomMailboxParam, psModuleLine, psPrereqLine]);
 
   const copyFallbackCommand = useCallback(() => {
     const cmd = `${psPrereqLine}\n${psModuleLine}\nConnect-ExchangeOnline\nInvoke-MTRReadinessCheck -RoomMailboxes ${roomMailboxParam}`;
