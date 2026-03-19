@@ -26,9 +26,6 @@ export async function runAssessment(
   const results: CheckResult[] = [];
   let completed = 0;
 
-  // Pre-check confirmations: checks manually confirmed in Step 0
-  const preCheckIds = new Set(fullContext.config.preCheckConfirmations ?? []);
-
   // Run all Graph-based checks concurrently
   const graphChecks = allChecks.filter((c) => c.source === 'graph');
   const psChecks = allChecks.filter((c) => c.source === 'powershell');
@@ -37,22 +34,6 @@ export async function runAssessment(
   // Execute graph checks with error isolation per check
   const graphResults = await Promise.allSettled(
     graphChecks.map(async (check) => {
-      // If this check was confirmed in the pre-flight checklist, skip execution
-      if (preCheckIds.has(check.id)) {
-        completed++;
-        onProgress?.(completed, allChecks.length, check.name);
-        return {
-          checkId: check.id,
-          categoryId: check.categoryId,
-          name: check.name,
-          source: check.source,
-          severity: check.severity,
-          status: 'pass' as CheckStatus,
-          details: 'Manually confirmed by user during pre-flight check.',
-          timestamp: new Date().toISOString(),
-        } satisfies CheckResult;
-      }
-
       try {
         const result = await check.execute(fullContext);
         completed++;
@@ -87,22 +68,6 @@ export async function runAssessment(
   let psMergedCount = 0;
   const psResults = await Promise.allSettled(
     psChecks.map(async (check) => {
-      // If this check was confirmed in the pre-flight checklist, skip execution
-      if (preCheckIds.has(check.id)) {
-        completed++;
-        onProgress?.(completed, allChecks.length, check.name);
-        return {
-          checkId: check.id,
-          categoryId: check.categoryId,
-          name: check.name,
-          source: check.source,
-          severity: check.severity,
-          status: 'pass' as CheckStatus,
-          details: 'Manually confirmed by user during pre-flight check.',
-          timestamp: new Date().toISOString(),
-        } satisfies CheckResult;
-      }
-
       // If uploaded PS data has this check, use it directly (override)
       if (fullContext.powershellData) {
         const uploaded = fullContext.powershellData.checks.find((c) => c.checkId === check.id);
@@ -151,31 +116,18 @@ export async function runAssessment(
     }
   }
 
-  // Mark manual checks as pending (or pass if pre-confirmed)
+  // Mark manual checks as pending
   for (const manualCheck of manualChecks) {
-    if (preCheckIds.has(manualCheck.id)) {
-      results.push({
-        checkId: manualCheck.id,
-        categoryId: manualCheck.categoryId,
-        name: manualCheck.name,
-        status: 'pass',
-        source: 'manual',
-        severity: manualCheck.severity,
-        details: 'Manually confirmed by user during pre-flight check.',
-        timestamp: new Date().toISOString(),
-      });
-    } else {
-      results.push({
-        checkId: manualCheck.id,
-        categoryId: manualCheck.categoryId,
-        name: manualCheck.name,
-        status: 'pending',
-        source: 'manual',
-        severity: manualCheck.severity,
-        details: 'Requires manual on-site validation.',
-        timestamp: new Date().toISOString(),
-      });
-    }
+    results.push({
+      checkId: manualCheck.id,
+      categoryId: manualCheck.categoryId,
+      name: manualCheck.name,
+      status: 'pending',
+      source: 'manual',
+      severity: manualCheck.severity,
+      details: 'Requires manual on-site validation.',
+      timestamp: new Date().toISOString(),
+    });
   }
 
   // Aggregate into categories

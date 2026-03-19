@@ -41,7 +41,7 @@ import {
   ChevronRight24Regular,
 } from '@fluentui/react-icons';
 import { StatusBadge } from '@/components/assessment/StatusBadge';
-import { runAllBrowserNetworkChecks } from '@/lib/browser-network-checks';
+import { runAllBrowserNetworkChecks, type BrowserCheckResult } from '@/lib/browser-network-checks';
 import type { Assessment, DeviceType } from '@/checks/types';
 
 // ---------------------------------------------------------------------------
@@ -92,6 +92,27 @@ const DEVICE_OPTIONS: DeviceOption[] = [
     description: 'Bring Your Own Device rooms with personal laptops and peripherals',
     icon: Speaker224Regular,
   },
+];
+
+// ---------------------------------------------------------------------------
+// Network check display definitions
+// ---------------------------------------------------------------------------
+
+interface NetworkCheckDisplay {
+  id: string;
+  label: string;
+  status: 'pending' | 'running' | 'pass' | 'fail' | 'warning' | 'info';
+  details: string;
+}
+
+const NETWORK_CHECK_DISPLAY: Omit<NetworkCheckDisplay, 'status' | 'details'>[] = [
+  { id: 'net-udp-ports-reachable', label: 'UDP 3478 reachability (STUN/WebRTC)' },
+  { id: 'net-websocket-permitted', label: 'WebSocket (wss://) connectivity' },
+  { id: 'net-no-proxy-auth', label: 'Proxy authentication detection' },
+  { id: 'management-pmp-connectivity', label: 'Pro Management Portal reachability' },
+  { id: 'net-tcp-443-reachable', label: 'TCP 443 to Teams endpoints' },
+  { id: 'net-tls-inspection-bypass', label: 'TLS inspection bypass' },
+  { id: 'net-bandwidth-adequate', label: 'Bandwidth estimate' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -292,21 +313,9 @@ export default function RunAssessmentPage() {
   const searchParams = useSearchParams();
   const demoMode = searchParams.get('demo') === 'true';
 
-  // Step 0: pre-flight confirmations
-  const PRE_CHECK_ITEMS: { id: string; label: string }[] = [
-    { id: 'net-udp-ports-reachable', label: 'UDP ports 3478\u20133481 are open from the room network to Microsoft Teams relay servers' },
-    { id: 'net-tcp-443-reachable', label: 'TCP port 443 is open from the room network to *.teams.microsoft.com, *.skype.com, and *.lync.com' },
-    { id: 'net-no-proxy-auth', label: 'No proxy requiring authentication is configured on the room network' },
-    { id: 'net-tls-inspection-bypass', label: 'TLS/SSL inspection is bypassed for Microsoft Teams traffic on your firewall or proxy' },
-    { id: 'net-websocket-permitted', label: 'WebSocket connections (wss://) are permitted from the room network' },
-    { id: 'net-bandwidth-adequate', label: 'Room network has at least 10 Mbps downstream / 5 Mbps upstream dedicated to Teams traffic' },
-    { id: 'management-pmp-connectivity', label: 'Teams Rooms devices can reach https://portal.rooms.microsoft.com/ from the room network' },
-  ];
-
-  const [preCheckConfirmed, setPreCheckConfirmed] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(PRE_CHECK_ITEMS.map((item) => [item.id, false])),
-  );
-  const allPreChecksConfirmed = PRE_CHECK_ITEMS.every((item) => preCheckConfirmed[item.id]);
+  // Step 0: automated network checks
+  const [networkChecksState, setNetworkChecksState] = useState<'idle' | 'running' | 'done'>('idle');
+  const [networkCheckResults, setNetworkCheckResults] = useState<NetworkCheckDisplay[]>([]);
 
   const [selectedDevices, setSelectedDevices] = useState<Set<DeviceType>>(
     new Set(['teams-rooms-windows']),
@@ -331,6 +340,44 @@ export default function RunAssessmentPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initialPsMerged = useRef(0);
+
+  async function runNetworkPreChecks() {
+    setNetworkChecksState('running');
+    setNetworkCheckResults(
+      NETWORK_CHECK_DISPLAY.map((item) => ({ ...item, status: 'running' as const, details: '' })),
+    );
+
+    const applyResults = (results: BrowserCheckResult[]) => {
+      setNetworkCheckResults((prev) =>
+        prev.map((item) => {
+          const found = results.find((r) => r.checkId === item.id);
+          if (!found) return item;
+          return { ...item, status: found.status, details: found.details };
+        }),
+      );
+    };
+
+    const browserPromise = runAllBrowserNetworkChecks()
+      .then((results) => { applyResults(results); return results; })
+      .catch(() => []);
+
+    const serverPromise = fetch('/api/network-check', { method: 'POST' })
+      .then((r) => (r.ok ? r.json() : { checks: [] }))
+      .then((data) => { applyResults(data.checks ?? []); return data.checks ?? []; })
+      .catch(() => []);
+
+    await Promise.allSettled([browserPromise, serverPromise]);
+
+    // Mark any still-running items as warning (check couldn't complete)
+    setNetworkCheckResults((prev) =>
+      prev.map((item) =>
+        item.status === 'running'
+          ? { ...item, status: 'warning' as const, details: 'Check could not be completed.' }
+          : item,
+      ),
+    );
+    setNetworkChecksState('done');
+  }
 
   function toggleDevice(id: DeviceType) {
     setSelectedDevices((prev) => {
@@ -378,7 +425,6 @@ export default function RunAssessmentPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           deviceTypes: Array.from(selectedDevices),
-          preCheckConfirmations: PRE_CHECK_ITEMS.filter((item) => preCheckConfirmed[item.id]).map((item) => item.id),
         }),
       });
 
@@ -609,12 +655,12 @@ export default function RunAssessmentPage() {
       <div className={styles.stepIndicator}>
         <div className={styles.step}>
           <span
-            className={`${styles.stepNum} ${allPreChecksConfirmed ? styles.stepDone : !step1Done && !running ? styles.stepActive : styles.stepPending}`}
+            className={`${styles.stepNum} ${networkChecksState === 'done' ? styles.stepDone : !step1Done && !running ? styles.stepActive : styles.stepPending}`}
           >
-            {allPreChecksConfirmed ? <Checkmark24Regular style={{ fontSize: '14px' }} /> : '0'}
+            {networkChecksState === 'done' ? <Checkmark24Regular style={{ fontSize: '14px' }} /> : '0'}
           </span>
-          <Text size={200} weight={!allPreChecksConfirmed && !step1Done && !running ? 'semibold' : allPreChecksConfirmed ? 'semibold' : 'regular'}>
-            Pre-flight Checks
+          <Text size={200} weight={networkChecksState !== 'idle' || (!step1Done && !running) ? 'semibold' : 'regular'}>
+            Network Pre-checks
           </Text>
         </div>
         <div className={styles.step}>
@@ -635,39 +681,92 @@ export default function RunAssessmentPage() {
         </div>
       </div>
 
-      {/* Step 0: Pre-flight checks — shown before starting, before device selection */}
+      {/* Step 0: Automated network pre-checks */}
       {!step1Done && !running && (
         <Card className={styles.card}>
-          <Title3 as="h2">Pre-flight checks</Title3>
+          <Title3 as="h2">Network pre-checks</Title3>
           <Text
             size={200}
             style={{ display: 'block', marginTop: '4px', color: tokens.colorNeutralForeground3 }}
           >
-            Confirm the following before running the assessment. These cannot be verified automatically.
+            Run automated checks from your browser to verify Teams network connectivity before
+            the assessment.
           </Text>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
-            {PRE_CHECK_ITEMS.map((item) => (
-              <Checkbox
-                key={item.id}
-                checked={preCheckConfirmed[item.id]}
-                onChange={(_, data) =>
-                  setPreCheckConfirmed((prev) => ({ ...prev, [item.id]: !!data.checked }))
-                }
-                label={item.label}
-              />
-            ))}
-          </div>
-          <Text
-            size={100}
-            style={{ display: 'block', marginTop: '16px', color: tokens.colorNeutralForeground3, fontStyle: 'italic' }}
-          >
-            These will be marked as passed in your assessment report.
-          </Text>
+
+          {networkChecksState === 'idle' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px' }}>
+              <Button appearance="primary" onClick={runNetworkPreChecks}>
+                Run network checks
+              </Button>
+              <Button
+                appearance="subtle"
+                onClick={() => setNetworkChecksState('done')}
+              >
+                Skip
+              </Button>
+            </div>
+          )}
+
+          {networkChecksState !== 'idle' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
+              {networkCheckResults.map((check) => (
+                <div key={check.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <span style={{ flexShrink: 0, marginTop: '2px' }}>
+                    {check.status === 'running' && <Spinner size="tiny" />}
+                    {check.status === 'pass' && (
+                      <CheckmarkCircle24Filled
+                        style={{ fontSize: '16px', color: tokens.colorStatusSuccessForeground1 }}
+                      />
+                    )}
+                    {check.status === 'fail' && (
+                      <DismissCircle24Filled
+                        style={{ fontSize: '16px', color: tokens.colorStatusDangerForeground1 }}
+                      />
+                    )}
+                    {(check.status === 'warning' || check.status === 'info') && (
+                      <Warning24Filled
+                        style={{ fontSize: '16px', color: tokens.colorStatusWarningForeground1 }}
+                      />
+                    )}
+                  </span>
+                  <div>
+                    <Text size={200} weight="semibold">
+                      {check.label}
+                    </Text>
+                    {check.details && (
+                      <Text
+                        size={100}
+                        style={{ display: 'block', color: tokens.colorNeutralForeground3, marginTop: '2px' }}
+                      >
+                        {check.details}
+                      </Text>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {networkChecksState === 'done' && networkCheckResults.length > 0 && (() => {
+            const hasFailures = networkCheckResults.some((r) => r.status === 'fail' || r.status === 'warning');
+            return hasFailures ? (
+              <MessageBar intent="warning" style={{ marginTop: '16px' }}>
+                <MessageBarBody>
+                  Some checks flagged issues. Review the results above before proceeding, or
+                  continue and address them based on the assessment report.
+                </MessageBarBody>
+              </MessageBar>
+            ) : (
+              <MessageBar intent="success" style={{ marginTop: '16px' }}>
+                <MessageBarBody>All network checks passed. Your environment looks ready for Teams.</MessageBarBody>
+              </MessageBar>
+            );
+          })()}
         </Card>
       )}
 
-      {/* Onboarding: device selection — shown before starting, only when pre-checks confirmed */}
-      {!step1Done && !running && allPreChecksConfirmed && (
+      {/* Device selection — always visible before starting */}
+      {!step1Done && !running && (
         <Card className={styles.card}>
           <Title3 as="h2">What are you deploying?</Title3>
           <Text
@@ -732,7 +831,7 @@ export default function RunAssessmentPage() {
           }
         />
 
-        {!step1Done && allPreChecksConfirmed && (
+        {!step1Done && networkChecksState !== 'idle' && (
           <div className={styles.controls}>
             <Button
               appearance="primary"
@@ -746,7 +845,7 @@ export default function RunAssessmentPage() {
           </div>
         )}
 
-        {selectedDevices.size === 0 && !running && !step1Done && allPreChecksConfirmed && (
+        {selectedDevices.size === 0 && !running && !step1Done && networkChecksState !== 'idle' && (
           <MessageBar intent="warning" style={{ marginTop: '16px' }}>
             <MessageBarBody>
               Select at least one device type above to start the assessment.
@@ -754,7 +853,7 @@ export default function RunAssessmentPage() {
           </MessageBar>
         )}
 
-        {demoMode && !running && !step1Done && allPreChecksConfirmed && selectedDevices.size > 0 && (
+        {demoMode && !running && !step1Done && networkChecksState !== 'idle' && selectedDevices.size > 0 && (
           <MessageBar intent="info" style={{ marginTop: '16px' }}>
             <MessageBarBody>
               <MessageBarTitle>Demo Mode</MessageBarTitle>
