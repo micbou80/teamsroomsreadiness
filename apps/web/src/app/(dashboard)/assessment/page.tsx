@@ -556,11 +556,12 @@ export default function RunAssessmentPage() {
   const psModulePath = process.env.NEXT_PUBLIC_PS_MODULE_PATH;
   const psModuleLine = psModulePath
     ? `Import-Module '${psModulePath}'`
-    : `Install-Module MTRReadiness -Scope CurrentUser`;
+    : `Import-Module '.\\packages\\powershell\\MTRReadiness\\MTRReadiness.psd1'`;
+  const psPrereqLine = `Install-Module ExchangeOnlineManagement -Scope CurrentUser # skip if already installed`;
 
   const copyCommand = useCallback(() => {
     if (!uploadUrl) return;
-    const cmd = `${psModuleLine}\nConnect-ExchangeOnline\nInvoke-MTRReadinessCheck -RoomMailboxes ${roomMailboxParam} -AutoUpload '${uploadUrl}'`;
+    const cmd = `${psPrereqLine}\n${psModuleLine}\nConnect-ExchangeOnline\nInvoke-MTRReadinessCheck -RoomMailboxes ${roomMailboxParam} -AutoUpload '${uploadUrl}'`;
     navigator.clipboard.writeText(cmd).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -568,7 +569,7 @@ export default function RunAssessmentPage() {
   }, [uploadUrl, roomMailboxParam, psModuleLine]);
 
   const copyFallbackCommand = useCallback(() => {
-    const cmd = `${psModuleLine}\nConnect-ExchangeOnline\nInvoke-MTRReadinessCheck -RoomMailboxes ${roomMailboxParam}`;
+    const cmd = `${psPrereqLine}\n${psModuleLine}\nConnect-ExchangeOnline\nInvoke-MTRReadinessCheck -RoomMailboxes ${roomMailboxParam}`;
     navigator.clipboard.writeText(cmd).then(() => {
       setCopiedFallback(true);
       setTimeout(() => setCopiedFallback(false), 2000);
@@ -852,8 +853,8 @@ export default function RunAssessmentPage() {
           </div>
           <div className={styles.step2Body}>
             <Text size={200} style={{ display: 'block', color: tokens.colorNeutralForeground2 }}>
-              Calendar processing checks require Exchange Online PowerShell. Copy the command
-              below, run it in PowerShell, and results will be uploaded automatically.
+              Open a PowerShell terminal <strong>in the repo root directory</strong>, copy the
+              command below, and run it. Results will be uploaded automatically.
             </Text>
 
             {uploadUrl ? (
@@ -868,6 +869,7 @@ export default function RunAssessmentPage() {
                   >
                     {copied ? 'Copied!' : 'Copy'}
                   </Button>
+                  {psPrereqLine}<br />
                   {psModuleLine}<br />
                   Connect-ExchangeOnline<br />
                   Invoke-MTRReadinessCheck -RoomMailboxes {roomMailboxParam} `<br />
@@ -917,6 +919,7 @@ export default function RunAssessmentPage() {
                       >
                         {copiedFallback ? 'Copied!' : 'Copy'}
                       </Button>
+                      {psPrereqLine}<br />
                       {psModuleLine}<br />
                       Connect-ExchangeOnline<br />
                       Invoke-MTRReadinessCheck -RoomMailboxes {roomMailboxParam}
