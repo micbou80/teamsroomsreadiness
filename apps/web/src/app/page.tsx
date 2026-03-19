@@ -47,7 +47,7 @@ export default function LandingPage() {
         </Subtitle1>
         <Button
           as="a"
-          href="/login"
+          href="/assessment"
           appearance="primary"
           size="large"
           style={{ marginTop: '24px' }}

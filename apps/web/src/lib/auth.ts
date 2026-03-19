@@ -6,12 +6,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     MicrosoftEntraID({
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      issuer: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID ?? 'common'}/v2.0`,
+      issuer: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/v2.0`,
       authorization: {
+        url: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/authorize`,
         params: {
-          scope: 'openid profile email User.Read.All Organization.Read.All Policy.Read.All Directory.Read.All MailboxSettings.Read DeviceManagementManagedDevices.Read.All',
+          scope: 'openid profile email offline_access User.Read.All Organization.Read.All Policy.Read.All Directory.Read.All MailboxSettings.Read DeviceManagementManagedDevices.Read.All',
         },
       },
+      token: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/oauth2/v2.0/token`,
+      userinfo: 'https://graph.microsoft.com/oidc/userinfo',
     }),
   ],
   callbacks: {
