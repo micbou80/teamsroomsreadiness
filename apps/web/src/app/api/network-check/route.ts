@@ -90,18 +90,21 @@ export async function POST(request: NextRequest) {
     let warmupDone = false;
     let measureStartTime = 0;
     let measureBytes = 0;
+    let totalBytes = 0;
 
     if (reader) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (!value) continue;
+        totalBytes += value.length;
         const elapsed = Date.now() - startTime;
         if (!warmupDone && elapsed >= WARMUP_MS) {
           warmupDone = true;
           measureStartTime = Date.now();
           measureBytes = 0;
         }
-        if (warmupDone && value) {
+        if (warmupDone) {
           measureBytes += value.length;
         }
       }
@@ -109,10 +112,15 @@ export async function POST(request: NextRequest) {
 
     clearTimeout(timeout);
 
-    const measureElapsedSec = (Date.now() - measureStartTime) / 1000;
-    const mbps = measureElapsedSec > 1
+    const totalElapsedSec = (Date.now() - startTime) / 1000;
+    const measureElapsedSec = warmupDone ? (Date.now() - measureStartTime) / 1000 : 0;
+
+    // If warmup never triggered (download was faster than 3s), fall back to total
+    const mbps = warmupDone && measureElapsedSec > 0.5
       ? (measureBytes * 8) / (measureElapsedSec * 1_000_000)
-      : 0;
+      : totalBytes > 0 && totalElapsedSec > 0
+        ? (totalBytes * 8) / (totalElapsedSec * 1_000_000)
+        : 0;
 
     results.push({
       checkId: 'net-bandwidth-adequate',
@@ -123,7 +131,7 @@ export async function POST(request: NextRequest) {
         : mbps > 0
           ? `Download throughput: ${mbps.toFixed(1)} Mbps. Teams Rooms requires at least 10 Mbps per room — consider dedicating more bandwidth to Teams traffic.`
           : 'Could not measure bandwidth. Run the PowerShell module for accurate testing.',
-      rawData: { estimatedMbps: mbps, measureElapsedSec, measureBytes, testFile: '25MB (Cloudflare)' },
+      rawData: { estimatedMbps: mbps, method: warmupDone ? 'post-warmup' : 'total', testFile: '25MB (Cloudflare)' },
     });
   } catch {
     results.push({
