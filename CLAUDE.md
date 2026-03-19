@@ -126,7 +126,9 @@ The upload merge matches by `checkId`. If IDs don't match, results won't merge. 
 
 ### Git
 - Conventional commits: `feat:`, `fix:`, `docs:`, `chore:`, `test:`
-- Branch naming: `feature/`, `fix/`, `docs/`
+- **Always work on `dev`** — never create feature branches
+- After any code change: `git add <files>`, commit, `git push origin dev`
+- PRs go from `dev` → `main` (open manually on GitHub — `gh` CLI not installed)
 
 ## Key Constants
 
@@ -136,7 +138,7 @@ Defined in `apps/web/src/lib/constants.ts`:
 - Teams Rooms Basic SKU: `Microsoft_Teams_Rooms_Basic`
 - Teams Shared Devices: `MCOCAP` (must NOT be assigned to rooms)
 - Basic license cap: 25 per tenant
-- Min bandwidth: 10 Mbps
+- Min bandwidth: 10 Mbps (server-side bandwidth test uses 25 MB from `speed.cloudflare.com/__down?bytes=25000000`, discards first 3s to skip TCP slow-start, falls back to total bytes/time if download beats 3s warmup)
 - Teams media UDP ports: 3478-3481
 - Windows 11 min build: 22000
 - EWS full shutdown: 2027-04-01
@@ -144,14 +146,17 @@ Defined in `apps/web/src/lib/constants.ts`:
 ## Assessment Flow
 
 1. User signs in via Microsoft Entra ID (or uses demo mode)
-2. Selects device types to deploy
+2. **Step 0** — pre-assessment page (`/assessment`):
+   - Device selection grid always visible immediately (not gated)
+   - Automated network pre-checks card: "Run network checks" button triggers parallel browser checks (STUN/WebRTC, WebSocket, proxy detection, PMP reachability) + server-side checks (TCP 443, TLS inspection, bandwidth estimate)
+   - Results shown inline per check with pass/fail/warning icons as each batch completes
+   - "Skip" option bypasses checks; Step 1 unlocks after checks complete or skip
 3. **Step 1** — clicks "Start Assessment":
    - API route creates Graph client from user's access token
    - Optionally acquires Exchange Online token (client credentials)
    - Engine runs all Graph checks concurrently
    - Engine executes PowerShell checks (Exchange API may auto-resolve calendar checks)
-   - Browser runs network probes (STUN, WebSocket, fetch)
-   - Server runs network probes
+   - Server runs network probes; browser network results merged into assessment
    - Results persisted to database
 4. If pending checks remain → **Step 2** shows PowerShell commands with auto-discovered room mailboxes
 5. PowerShell results upload via auto-upload URL (polling) or manual file upload at `/upload`
