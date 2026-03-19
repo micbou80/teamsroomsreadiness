@@ -430,10 +430,13 @@ export default function RunAssessmentPage() {
   // Compute summary counts from the result
   const categories = result?.categories ?? [];
   const allChecks = categories.flatMap((c) => c.checks);
-  const passCount = allChecks.filter((c) => c.status === 'pass').length;
-  const failCount = allChecks.filter((c) => c.status === 'fail').length;
-  const warnCount = allChecks.filter((c) => c.status === 'warning').length;
   const pendingCount = allChecks.filter((c) => c.status === 'pending').length;
+
+  // Graph-only checks — used for the inline Step 1 summary (excludes powershell/manual pending checks)
+  const graphChecks = allChecks.filter((c) => c.source === 'graph');
+  const passCount = graphChecks.filter((c) => c.status === 'pass').length;
+  const failCount = graphChecks.filter((c) => c.status === 'fail').length;
+  const warnCount = graphChecks.filter((c) => c.status === 'warning').length;
 
   const step1Done = result !== null;
 
@@ -770,11 +773,12 @@ export default function RunAssessmentPage() {
               <>
                 <div className={styles.categoryGrid}>
                   {categories
-                    .filter((cat) => cat.checks.some((c) => c.status !== 'pending'))
+                    .filter((cat) => cat.checks.some((c) => c.source === 'graph'))
                     .map((cat) => {
-                    const catPassed = cat.checks.filter((c) => c.status === 'pass').length;
-                    const catTotal = cat.checks.filter(
-                      (c) => c.status !== 'pending' && c.status !== 'not-applicable',
+                    const catGraphChecks = cat.checks.filter((c) => c.source === 'graph');
+                    const catPassed = catGraphChecks.filter((c) => c.status === 'pass').length;
+                    const catTotal = catGraphChecks.filter(
+                      (c) => c.status !== 'not-applicable',
                     ).length;
                     return (
                       <Card key={cat.categoryId} className={styles.categoryCard}>
@@ -792,7 +796,8 @@ export default function RunAssessmentPage() {
                   })}
                 </div>
 
-                <div className={styles.completionActions}>
+                {psReceived ? (
+                  <div className={styles.completionActions}>
                     <Button
                       appearance="primary"
                       icon={<ArrowRight24Filled />}
@@ -815,7 +820,15 @@ export default function RunAssessmentPage() {
                     >
                       Export Excel
                     </Button>
-                </div>
+                  </div>
+                ) : (
+                  <Text
+                    size={200}
+                    style={{ display: 'block', marginTop: '20px', color: tokens.colorNeutralForeground3 }}
+                  >
+                    Complete Step 2 to view and export the full report.
+                  </Text>
+                )}
               </>
             )}
           </div>
@@ -866,155 +879,27 @@ export default function RunAssessmentPage() {
                   )}
                 </div>
 
-                {waitingForPs && (() => {
-                  const roomCount = discoveredRooms.length || 1;
-                  const estMinLow = Math.max(1, Math.round(roomCount * 17 / 60));
-                  const estMinHigh = Math.max(2, Math.round(roomCount * 20 / 60));
-                  const estTotalSec = roomCount * 20;
-                  const overdue = elapsedSeconds > estTotalSec;
-                  // Show hang warning after 2 min, or at 60% of estimated time — whichever is earlier
-                  const hangWarnAt = Math.min(120, estTotalSec * 0.6);
-                  const showHangWarning = elapsedSeconds > hangWarnAt;
-
-                  return (
-                    <div style={{ marginTop: '20px' }}>
-                      {/* keyframes for pulse dot */}
-                      <style>{`
-                        @keyframes mtr-pulse {
-                          0%, 100% { opacity: 1; transform: scale(1); }
-                          50% { opacity: 0.4; transform: scale(0.75); }
-                        }
-                        @keyframes mtr-row-fade {
-                          0%, 100% { opacity: 1; }
-                          50% { opacity: 0.55; }
-                        }
-                      `}</style>
-
-                      {/* Header: status + elapsed */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Spinner size="tiny" />
-                          <Text size={200} weight="semibold">Waiting for PowerShell results…</Text>
-                        </div>
-                        <Text size={200} style={{ color: tokens.colorNeutralForeground3, fontVariantNumeric: 'tabular-nums' }}>
-                          {formatElapsed(elapsedSeconds)}
-                        </Text>
+                {waitingForPs && (
+                  <div style={{ marginTop: '20px' }}>
+                    {/* Status: spinner + elapsed */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Spinner size="tiny" />
+                        <Text size={200} weight="semibold">Waiting for PowerShell results…</Text>
                       </div>
-
-                      {/* Progress bar */}
-                      <ProgressBar />
-
-                      {/* Status row: poll heartbeat + estimate */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', flexWrap: 'wrap', gap: '4px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{
-                            width: '7px', height: '7px', borderRadius: '50%',
-                            backgroundColor: pollError ? tokens.colorStatusWarningForeground1 : tokens.colorStatusSuccessForeground1,
-                            display: 'inline-block',
-                            animation: 'mtr-pulse 2s ease-in-out infinite',
-                            flexShrink: 0,
-                          }} />
-                          <Text size={100} style={{ color: tokens.colorNeutralForeground3 }}>
-                            {pollError
-                              ? pollError
-                              : lastPolledAt
-                                ? pollCount === 1
-                                  ? 'Checking every 5 seconds…'
-                                  : `Checked ${secondsSinceLastPoll}s ago · poll #${pollCount}`
-                                : 'First check in a moment…'
-                            }
-                          </Text>
-                        </div>
-                        <Text size={100} style={{
-                          color: overdue ? tokens.colorStatusWarningForeground1 : tokens.colorNeutralForeground3,
-                          fontStyle: overdue ? 'italic' : undefined,
-                        }}>
-                          {overdue
-                            ? 'Taking longer than expected — script may still be running'
-                            : `~${estMinLow}–${estMinHigh} min estimated (${roomCount} rooms)`
-                          }
-                        </Text>
-                      </div>
-
-                      {/* Poll error banner */}
-                      {pollError && (
-                        <MessageBar intent="warning" style={{ marginTop: '10px' }}>
-                          <MessageBarBody>{pollError}</MessageBarBody>
-                        </MessageBar>
-                      )}
-
-                      {/* Hang warning — appears early, before user gives up */}
-                      {showHangWarning && (
-                        <MessageBar intent={overdue ? 'warning' : 'info'} style={{ marginTop: '10px' }}>
-                          <MessageBarBody>
-                            <MessageBarTitle>{overdue ? 'Still waiting — no results received' : 'Still waiting…'}</MessageBarTitle>
-                            No results have been uploaded yet. This usually means one of:
-                            <ul style={{ margin: '6px 0 4px 0', paddingLeft: '18px' }}>
-                              <li>The command hasn't been run yet — copy it above and run it in PowerShell</li>
-                              <li>The script is still running — it can take {estMinLow}–{estMinHigh} min for {roomCount} rooms</li>
-                              <li>The script hung on a Voice/SBC check (common on restricted networks) — press <strong>Ctrl+C</strong> and upload the saved results file manually</li>
-                              <li>The script finished but the window closed before uploading — re-run the command or upload manually</li>
-                            </ul>
-                            <Button
-                              appearance="transparent"
-                              size="small"
-                              style={{ padding: '0 4px', height: 'auto', minHeight: 0 }}
-                              onClick={() => router.push('/upload')}
-                            >
-                              Upload manually →
-                            </Button>
-                          </MessageBarBody>
-                        </MessageBar>
-                      )}
-
-                      {/* Pending checks list */}
-                      <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {categories
-                          .filter((cat) => cat.checks.some((c) => c.status === 'pending'))
-                          .map((cat) => (
-                            <div key={cat.categoryId}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                                <Text
-                                  size={100}
-                                  weight="semibold"
-                                  style={{
-                                    color: tokens.colorNeutralForeground3,
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.05em',
-                                    animation: 'mtr-row-fade 3s ease-in-out infinite',
-                                  }}
-                                >
-                                  {cat.name}
-                                </Text>
-                                <span style={{
-                                  fontSize: '10px',
-                                  padding: '1px 5px',
-                                  borderRadius: '10px',
-                                  backgroundColor: tokens.colorNeutralBackground4,
-                                  color: tokens.colorNeutralForeground3,
-                                  fontWeight: 600,
-                                  letterSpacing: '0.03em',
-                                }}>
-                                  WAITING
-                                </span>
-                              </div>
-                              {cat.checks
-                                .filter((c) => c.status === 'pending')
-                                .map((check) => (
-                                  <div
-                                    key={check.checkId}
-                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '8px', marginBottom: '3px' }}
-                                  >
-                                    <Spinner size="extra-tiny" />
-                                    <Text size={200}>{check.name}</Text>
-                                  </div>
-                                ))}
-                            </div>
-                          ))}
-                      </div>
+                      <Text size={200} style={{ color: tokens.colorNeutralForeground3, fontVariantNumeric: 'tabular-nums' }}>
+                        {formatElapsed(elapsedSeconds)}
+                      </Text>
                     </div>
-                  );
-                })()}
+
+                    {/* Clear instruction */}
+                    <MessageBar intent="info">
+                      <MessageBarBody>
+                        Run the PowerShell command above, then come back — this page will update automatically when results are received.
+                      </MessageBarBody>
+                    </MessageBar>
+                  </div>
+                )}
               </>
             ) : (
               <div className={styles.step2Steps}>
