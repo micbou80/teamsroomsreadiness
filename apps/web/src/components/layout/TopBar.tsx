@@ -94,7 +94,7 @@ export function TopBar() {
             <span className={styles.helloText}>Hello</span>
             <span className={styles.nameText}>{session.name}</span>
           </div>
-          <Avatar name={session.name} size={34} color="brand" />
+          <Avatar name={session.name} size={32} color="brand" />
         </a>
       ) : (
         <Button
