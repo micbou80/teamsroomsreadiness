@@ -74,32 +74,63 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Bandwidth estimate - Download a small resource and estimate speed
+  // Bandwidth estimate — 25 MB from Cloudflare's public speed test endpoint.
+  // Discards the first 3 seconds to skip TCP slow-start ramp-up, matching
+  // the approach used by Microsoft's M365 connectivity test and fast.com.
   try {
-    const testUrl = 'https://teams.microsoft.com/favicon.ico';
-    const start = Date.now();
+    const testUrl = 'https://speed.cloudflare.com/__down?bytes=25000000';
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 40000);
+    const WARMUP_MS = 3000;
+
     const res = await fetch(testUrl, { signal: controller.signal });
-    const data = await res.arrayBuffer();
+    const reader = res.body?.getReader();
+
+    const startTime = Date.now();
+    let warmupDone = false;
+    let measureStartTime = 0;
+    let measureBytes = 0;
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const elapsed = Date.now() - startTime;
+        if (!warmupDone && elapsed >= WARMUP_MS) {
+          warmupDone = true;
+          measureStartTime = Date.now();
+          measureBytes = 0;
+        }
+        if (warmupDone && value) {
+          measureBytes += value.length;
+        }
+      }
+    }
+
     clearTimeout(timeout);
-    const elapsed = (Date.now() - start) / 1000;
-    const bytes = data.byteLength;
-    const mbps = (bytes * 8) / (elapsed * 1000000);
+
+    const measureElapsedSec = (Date.now() - measureStartTime) / 1000;
+    const mbps = measureElapsedSec > 1
+      ? (measureBytes * 8) / (measureElapsedSec * 1_000_000)
+      : 0;
 
     results.push({
       checkId: 'net-bandwidth-adequate',
       categoryId: 'network',
-      status: 'info',
-      details: `Rough estimate: ${mbps.toFixed(1)} Mbps (based on small file download). For accurate bandwidth testing, use the PowerShell module or a dedicated tool. Teams Rooms requires minimum 10 Mbps per room.`,
-      rawData: { bytes, elapsedSec: elapsed, estimatedMbps: mbps },
+      status: mbps >= 10 ? 'pass' : mbps > 0 ? 'warning' : 'warning',
+      details: mbps >= 10
+        ? `Download throughput: ${mbps.toFixed(1)} Mbps (steady-state after TCP warm-up). Meets the 10 Mbps minimum for Teams Rooms.`
+        : mbps > 0
+          ? `Download throughput: ${mbps.toFixed(1)} Mbps. Teams Rooms requires at least 10 Mbps per room — consider dedicating more bandwidth to Teams traffic.`
+          : 'Could not measure bandwidth. Run the PowerShell module for accurate testing.',
+      rawData: { estimatedMbps: mbps, measureElapsedSec, measureBytes, testFile: '25MB (Cloudflare)' },
     });
   } catch {
     results.push({
       checkId: 'net-bandwidth-adequate',
       categoryId: 'network',
       status: 'warning',
-      details: 'Unable to estimate bandwidth. Run the PowerShell module for bandwidth testing.',
+      details: 'Bandwidth measurement timed out or failed. Run the PowerShell module for bandwidth testing.',
       rawData: {},
     });
   }
