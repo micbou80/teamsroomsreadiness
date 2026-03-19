@@ -1,6 +1,7 @@
 import { getAllChecks, categories, getCategoryDefinition } from './registry';
 import { Assessment, AssessmentConfig, CategoryResult, CheckContext, CheckResult, CheckStatus, PowerShellUpload, ResourceAccount } from './types';
 import { computeCategoryScore, computeOverallScore, deriveStatus } from './scoring';
+import { isCheckRelevant } from './device-relevance';
 
 export async function runAssessment(
   context: Omit<CheckContext, 'resourceAccounts'> & { resourceAccounts?: ResourceAccount[] },
@@ -14,7 +15,14 @@ export async function runAssessment(
     resourceAccounts: context.resourceAccounts ?? [],
   };
 
-  const allChecks = getAllChecks();
+  const allRegistered = getAllChecks();
+
+  // Filter checks by selected device types (if provided)
+  const selectedDevices = fullContext.selectedDevices;
+  const allChecks = selectedDevices && selectedDevices.size > 0
+    ? allRegistered.filter((c) => isCheckRelevant(c.id, selectedDevices))
+    : allRegistered;
+
   const results: CheckResult[] = [];
   let completed = 0;
 
@@ -55,50 +63,56 @@ export async function runAssessment(
     }
   }
 
-  // Merge PowerShell data if uploaded
+  // Execute PowerShell checks — they may auto-resolve (e.g. via Exchange API)
+  // or return 'pending' if the required permissions/tokens aren't available.
   let psMergedCount = 0;
-  if (fullContext.powershellData) {
-    for (const psCheck of psChecks) {
-      const uploaded = fullContext.powershellData.checks.find((c) => c.checkId === psCheck.id);
-      if (uploaded) {
-        results.push({
-          checkId: uploaded.checkId,
-          categoryId: uploaded.categoryId,
-          name: psCheck.name,
-          status: uploaded.status,
-          source: 'powershell',
-          severity: psCheck.severity,
-          details: uploaded.details,
-          rawData: uploaded.rawData,
-          timestamp: fullContext.powershellData.generatedAt,
-        });
-        psMergedCount++;
-      } else {
-        results.push({
-          checkId: psCheck.id,
-          categoryId: psCheck.categoryId,
-          name: psCheck.name,
-          status: 'pending',
-          source: 'powershell',
-          severity: psCheck.severity,
+  const psResults = await Promise.allSettled(
+    psChecks.map(async (check) => {
+      // If uploaded PS data has this check, use it directly (override)
+      if (fullContext.powershellData) {
+        const uploaded = fullContext.powershellData.checks.find((c) => c.checkId === check.id);
+        if (uploaded) {
+          psMergedCount++;
+          return {
+            checkId: uploaded.checkId,
+            categoryId: uploaded.categoryId,
+            name: check.name,
+            status: uploaded.status,
+            source: 'powershell' as const,
+            severity: check.severity,
+            details: uploaded.details,
+            rawData: uploaded.rawData,
+            timestamp: fullContext.powershellData.generatedAt,
+          } satisfies CheckResult;
+        }
+      }
+
+      // Otherwise, try executing the check (may use Exchange API or return pending)
+      try {
+        const result = await check.execute(fullContext);
+        completed++;
+        onProgress?.(completed, allChecks.length, check.name);
+        return result;
+      } catch {
+        completed++;
+        onProgress?.(completed, allChecks.length, check.name);
+        return {
+          checkId: check.id,
+          categoryId: check.categoryId,
+          name: check.name,
+          status: 'pending' as CheckStatus,
+          source: check.source,
+          severity: check.severity,
           details: 'Requires PowerShell companion module. Run Invoke-MTRReadinessCheck and upload results.',
           timestamp: new Date().toISOString(),
-        });
+        } satisfies CheckResult;
       }
-    }
-  } else {
-    // No PS data — mark all PS checks as pending
-    for (const psCheck of psChecks) {
-      results.push({
-        checkId: psCheck.id,
-        categoryId: psCheck.categoryId,
-        name: psCheck.name,
-        status: 'pending',
-        source: 'powershell',
-        severity: psCheck.severity,
-        details: 'Requires PowerShell companion module. Run Invoke-MTRReadinessCheck and upload results.',
-        timestamp: new Date().toISOString(),
-      });
+    }),
+  );
+
+  for (const result of psResults) {
+    if (result.status === 'fulfilled') {
+      results.push(result.value);
     }
   }
 

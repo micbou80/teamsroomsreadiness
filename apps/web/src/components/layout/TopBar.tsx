@@ -1,70 +1,113 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   makeStyles,
   tokens,
-  Text,
   Avatar,
   Button,
 } from '@fluentui/react-components';
-import { SignOut24Regular } from '@fluentui/react-icons';
+import { Person24Regular } from '@fluentui/react-icons';
 
 const useStyles = makeStyles({
   topbar: {
-    height: '56px',
-    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    height: '60px',
+    borderBottom: '1px solid #f0f0f0',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '0 24px',
-    backgroundColor: tokens.colorNeutralBackground1,
+    justifyContent: 'flex-end',
+    padding: '0 32px',
+    backgroundColor: '#ffffff',
+    flexShrink: 0,
+    gap: '16px',
   },
-  left: {
+  profileLink: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '10px',
+    textDecoration: 'none',
+    cursor: 'pointer',
+    padding: '5px 10px',
+    borderRadius: '8px',
+    transition: 'background-color 120ms',
+    '&:hover': {
+      backgroundColor: '#f5f6fa',
+    },
   },
-  right: {
+  textStack: {
+    textAlign: 'right' as const,
     display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
+    flexDirection: 'column',
+    gap: '1px',
+  },
+  helloText: {
+    fontSize: '11px',
+    color: '#9b9bab',
+    lineHeight: '1.2',
+    fontWeight: '400',
+  },
+  nameText: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#1a1a2e',
+    lineHeight: '1.2',
+  },
+  signInBtn: {
+    fontSize: '13px',
   },
 });
 
-interface TopBarProps {
-  tenantName?: string;
-  userName?: string;
+interface SessionData {
+  name: string | null;
+  email: string | null;
 }
 
-export function TopBar({ tenantName, userName }: TopBarProps) {
+export function TopBar() {
   const styles = useStyles();
+  const searchParams = useSearchParams();
+  const isDemo = searchParams.get('demo') === 'true';
+  const [session, setSession] = useState<SessionData>({ name: null, email: null });
+
+  useEffect(() => {
+    if (isDemo) {
+      setSession({ name: 'Demo User', email: 'demo@contoso.com' });
+      return;
+    }
+    fetch('/api/auth/session')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.user) {
+          setSession({ name: data.user.name ?? null, email: data.user.email ?? null });
+        }
+      })
+      .catch(() => {});
+  }, [isDemo]);
+
+  const profileHref = isDemo ? '/profile?demo=true' : '/profile';
 
   return (
     <header className={styles.topbar}>
-      <div className={styles.left}>
-        {tenantName && (
-          <Text size={300} weight="semibold">
-            {tenantName}
-          </Text>
-        )}
-      </div>
-      <div className={styles.right}>
-        {userName && (
-          <>
-            <Avatar name={userName} size={32} />
-            <Text size={200}>{userName}</Text>
-          </>
-        )}
+      {session.name ? (
+        <a href={profileHref} className={styles.profileLink}>
+          <div className={styles.textStack}>
+            <span className={styles.helloText}>Hello</span>
+            <span className={styles.nameText}>{session.name}</span>
+          </div>
+          <Avatar name={session.name} size={34} color="brand" />
+        </a>
+      ) : (
         <Button
           as="a"
-          href="/api/auth/signout"
+          href="/login"
           appearance="subtle"
-          icon={<SignOut24Regular />}
+          icon={<Person24Regular />}
           size="small"
+          className={styles.signInBtn}
         >
-          Sign out
+          Sign in
         </Button>
-      </div>
+      )}
     </header>
   );
 }

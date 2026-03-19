@@ -33,6 +33,8 @@ export interface CheckContext {
   resourceAccounts: ResourceAccount[];
   config: AssessmentConfig;
   powershellData?: PowerShellUpload;
+  exchangeToken?: string;
+  selectedDevices?: Set<DeviceType>;
 }
 
 export interface ResourceAccount {
@@ -83,11 +85,21 @@ export interface Assessment {
   metadata: AssessmentMetadata;
 }
 
+export type DeviceType =
+  | 'teams-rooms-windows'
+  | 'teams-rooms-android'
+  | 'teams-panels'
+  | 'teams-phones'
+  | 'surface-hub'
+  | 'teams-displays'
+  | 'byod';
+
 export interface AssessmentMetadata {
   webChecksRun: number;
   powershellChecksMerged: number;
   manualChecksCompleted: number;
   duration: number;
+  deviceTypes?: DeviceType[];
 }
 
 export interface AssessmentConfig {

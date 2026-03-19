@@ -71,7 +71,7 @@ function Test-TLSInspection {
 
     if ($intercepted.Count -eq 0) {
         return [PSCustomObject]@{
-            CheckId    = 'tls-inspection-bypass'
+            CheckId    = 'net-tls-inspection-bypass'
             CategoryId = 'network'
             Status     = 'pass'
             Details    = "No TLS inspection detected on Teams endpoints. Certificates are issued by trusted Microsoft CAs."
@@ -84,7 +84,7 @@ function Test-TLSInspection {
     else {
         $detail = ($intercepted | ForEach-Object { "$($_.Host) (issuer: $($_.Issuer))" }) -join '; '
         return [PSCustomObject]@{
-            CheckId    = 'tls-inspection-bypass'
+            CheckId    = 'net-tls-inspection-bypass'
             CategoryId = 'network'
             Status     = 'fail'
             Details    = "TLS inspection detected: $detail. Add Teams Optimize/Allow endpoints to your inspection bypass list."

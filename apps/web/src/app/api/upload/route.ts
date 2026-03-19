@@ -51,9 +51,30 @@ const uploadSchema = z.object({
 export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const isDemo = searchParams.get('demo') === 'true';
+  const uploadToken = searchParams.get('token');
 
   let tenantId: string;
-  if (isDemo) {
+  let targetAssessmentId: string | null = null;
+
+  if (uploadToken) {
+    // Token-based auth (from PowerShell -AutoUpload)
+    const tokenRecord = await prisma.uploadToken.findUnique({
+      where: { token: uploadToken },
+    });
+
+    if (!tokenRecord) {
+      return NextResponse.json({ error: 'Invalid upload token.' }, { status: 401 });
+    }
+    if (tokenRecord.usedAt) {
+      return NextResponse.json({ error: 'Upload token has already been used.' }, { status: 401 });
+    }
+    if (new Date() > tokenRecord.expiresAt) {
+      return NextResponse.json({ error: 'Upload token has expired.' }, { status: 401 });
+    }
+
+    tenantId = tokenRecord.tenantId;
+    targetAssessmentId = tokenRecord.assessmentId;
+  } else if (isDemo) {
     tenantId = 'demo-tenant-00000000';
   } else {
     const session = await auth();
@@ -84,17 +105,21 @@ export async function POST(request: NextRequest) {
 
   const upload = parsed.data;
 
-  // Find the latest assessment for this tenant to merge into
-  const latestAssessment = await prisma.assessment.findFirst({
-    where: { tenantId },
-    orderBy: { createdAt: 'desc' },
-  });
+  // Find the target assessment: specific ID from token, or latest for tenant
+  const latestAssessment = targetAssessmentId
+    ? await prisma.assessment.findFirst({
+        where: { id: targetAssessmentId, tenantId },
+      })
+    : await prisma.assessment.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+      });
 
   if (!latestAssessment) {
     return NextResponse.json(
       {
         error:
-          'No existing assessment found for this tenant. Run an assessment first, then upload PowerShell results to merge.',
+          'No existing assessment found. Run an assessment first, then upload PowerShell results to merge.',
       },
       { status: 404 },
     );
@@ -165,6 +190,14 @@ export async function POST(request: NextRequest) {
       metadata: JSON.stringify(existingMeta),
     },
   });
+
+  // Mark token as used only after a successful upload
+  if (uploadToken) {
+    await prisma.uploadToken.update({
+      where: { token: uploadToken },
+      data: { usedAt: new Date() },
+    });
+  }
 
   return NextResponse.json({
     success: true,

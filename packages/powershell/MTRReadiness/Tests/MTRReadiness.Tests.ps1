@@ -46,12 +46,11 @@ Describe 'Test-CalendarProcessing' {
     }
 
     It 'should return pass for a correctly configured room' {
-        $results = InModuleScope MTRReadiness { Test-CalendarProcessing -Identity 'mtr-room1@contoso.com' }
-        $results | Should -Not -BeNullOrEmpty
-        $results | ForEach-Object {
-            $_.Status | Should -Be 'pass'
-            $_.CategoryId | Should -Be 'calendar'
-        }
+        $result = InModuleScope MTRReadiness { Test-CalendarProcessing -Identity 'mtr-room1@contoso.com' }
+        $result | Should -Not -BeNullOrEmpty
+        $result.Status | Should -Be 'pass'
+        $result.CheckId | Should -Be 'cal-calendar-processing'
+        $result.CategoryId | Should -Be 'calendar'
     }
 
     It 'should return fail when AutomateProcessing is not AutoAccept' {
@@ -66,9 +65,9 @@ Describe 'Test-CalendarProcessing' {
             }
         }
 
-        $results = InModuleScope MTRReadiness { Test-CalendarProcessing -Identity 'mtr-room1@contoso.com' }
-        $failedCheck = $results | Where-Object { $_.CheckId -eq 'calendar-processing' }
-        $failedCheck.Status | Should -Be 'fail'
+        $result = InModuleScope MTRReadiness { Test-CalendarProcessing -Identity 'mtr-room1@contoso.com' }
+        $result.CheckId | Should -Be 'cal-calendar-processing'
+        $result.Status | Should -Be 'fail'
     }
 
     It 'should return fail when DeleteComments is true' {
@@ -83,26 +82,26 @@ Describe 'Test-CalendarProcessing' {
             }
         }
 
-        $results = InModuleScope MTRReadiness { Test-CalendarProcessing -Identity 'mtr-room1@contoso.com' }
-        $failedCheck = $results | Where-Object { $_.CheckId -eq 'calendar-processing-delete-comments' }
-        $failedCheck.Status | Should -Be 'fail'
+        $result = InModuleScope MTRReadiness { Test-CalendarProcessing -Identity 'mtr-room1@contoso.com' }
+        $result.CheckId | Should -Be 'cal-calendar-processing'
+        $result.Status | Should -Be 'fail'
     }
 
-    It 'should return fail when DeleteSubject is true' {
+    It 'should return warning when AddOrganizerToSubject is true' {
         Mock Get-CalendarProcessing {
             [PSCustomObject]@{
                 AutomateProcessing              = 'AutoAccept'
                 DeleteComments                  = $false
-                DeleteSubject                   = $true
-                AddOrganizerToSubject           = $false
+                DeleteSubject                   = $false
+                AddOrganizerToSubject           = $true
                 RemovePrivateProperty           = $false
                 ProcessExternalMeetingMessages  = $true
             }
         }
 
-        $results = InModuleScope MTRReadiness { Test-CalendarProcessing -Identity 'mtr-room1@contoso.com' }
-        $failedCheck = $results | Where-Object { $_.CheckId -eq 'calendar-processing-delete-subject' }
-        $failedCheck.Status | Should -Be 'fail'
+        $result = InModuleScope MTRReadiness { Test-CalendarProcessing -Identity 'mtr-room1@contoso.com' }
+        $result.CheckId | Should -Be 'cal-calendar-processing'
+        $result.Status | Should -Be 'warning'
     }
 }
 
@@ -118,7 +117,7 @@ Describe 'Test-ExternalMeetingProcessing' {
 
         $result = InModuleScope MTRReadiness { Test-ExternalMeetingProcessing -Identity 'mtr-room1@contoso.com' }
         $result.Status | Should -Be 'pass'
-        $result.CheckId | Should -Be 'external-meeting-processing'
+        $result.CheckId | Should -Be 'cal-external-meeting-processing'
     }
 
     It 'should return fail when ProcessExternalMeetingMessages is false' {
@@ -135,7 +134,7 @@ Describe 'ConvertTo-UploadJson' {
     It 'should produce a valid upload payload' {
         $checkResults = @(
             [PSCustomObject]@{
-                CheckId    = 'tcp-443-reachable'
+                CheckId    = 'net-tcp-443-reachable'
                 CategoryId = 'network'
                 Status     = 'pass'
                 Details    = 'All endpoints reachable.'
@@ -151,14 +150,14 @@ Describe 'ConvertTo-UploadJson' {
         $json.generatedAt | Should -Not -BeNullOrEmpty
         $json.hostname | Should -Be 'TEST-PC'
         $json.checks | Should -HaveCount 1
-        $json.checks[0].checkId | Should -Be 'tcp-443-reachable'
+        $json.checks[0].checkId | Should -Be 'net-tcp-443-reachable'
         $json.checks[0].status | Should -Be 'pass'
     }
 }
 
 Describe 'Invoke-MTRReadinessCheck' {
     It 'should run network-only checks when -SkipCalendar is specified' {
-        # This runs actual network checks — may take a few seconds
+        # This runs actual network checks - may take a few seconds
         $results = Invoke-MTRReadinessCheck -SkipCalendar -PassThru
         $results | Should -Not -BeNullOrEmpty
         $results.Count | Should -BeGreaterOrEqual 1

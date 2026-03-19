@@ -40,10 +40,10 @@ function Test-BandwidthAdequacy {
 
     if ($speeds.Count -eq 0) {
         return [PSCustomObject]@{
-            CheckId    = 'bandwidth-adequate'
+            CheckId    = 'net-bandwidth-adequate'
             CategoryId = 'network'
             Status     = 'warning'
-            Details    = "Could not measure bandwidth — download test failed. Verify internet connectivity."
+            Details    = "Could not measure bandwidth - download test failed. Verify internet connectivity."
             RawData    = @{ error = 'All download attempts failed'; minimumMbps = $MinimumMbps }
         }
     }
@@ -53,7 +53,7 @@ function Test-BandwidthAdequacy {
     # Note: this is a rough estimate using a small file. Real bandwidth may differ.
     if ($avgMbps -ge $MinimumMbps) {
         return [PSCustomObject]@{
-            CheckId    = 'bandwidth-adequate'
+            CheckId    = 'net-bandwidth-adequate'
             CategoryId = 'network'
             Status     = 'pass'
             Details    = "Estimated bandwidth: ${avgMbps} Mbps (minimum: ${MinimumMbps} Mbps). Note: this is an estimate using a small download; consider a dedicated speed test for production validation."
@@ -62,10 +62,10 @@ function Test-BandwidthAdequacy {
     }
     else {
         return [PSCustomObject]@{
-            CheckId    = 'bandwidth-adequate'
+            CheckId    = 'net-bandwidth-adequate'
             CategoryId = 'network'
             Status     = 'warning'
-            Details    = "Estimated bandwidth: ${avgMbps} Mbps — below the recommended ${MinimumMbps} Mbps per room. Consider a dedicated speed test for accurate measurement."
+            Details    = "Estimated bandwidth: ${avgMbps} Mbps - below the recommended ${MinimumMbps} Mbps per room. Consider a dedicated speed test for accurate measurement."
             RawData    = @{ estimatedMbps = $avgMbps; minimumMbps = $MinimumMbps; samples = $speeds.Count }
         }
     }

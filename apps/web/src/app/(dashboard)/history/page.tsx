@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Title1,
   Text,
@@ -83,6 +83,9 @@ function scoreColor(score: number): string {
 export default function HistoryPage() {
   const styles = useStyles();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDemo = searchParams.get('demo') === 'true';
+  const demoQ = isDemo ? '?demo=true' : '';
 
   const [assessments, setAssessments] = useState<AssessmentSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +94,8 @@ export default function HistoryPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch('/api/assessment?demo=true');
+        const url = isDemo ? '/api/assessment?demo=true' : '/api/assessment';
+        const res = await fetch(url);
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error ?? 'Failed to load assessments.');
@@ -105,7 +109,7 @@ export default function HistoryPage() {
       }
     }
     load();
-  }, []);
+  }, [isDemo]);
 
   if (loading) {
     return (
@@ -158,7 +162,7 @@ export default function HistoryPage() {
           </Text>
           <Button
             as="a"
-            href="/assessment"
+            href={`/assessment${demoQ}`}
             appearance="primary"
             icon={<ClipboardTask24Regular />}
             style={{ marginTop: '16px' }}
@@ -181,7 +185,7 @@ export default function HistoryPage() {
               <tr
                 key={a.id}
                 className={styles.row}
-                onClick={() => router.push(`/assessment/${a.id}`)}
+                onClick={() => router.push(`/assessment/${a.id}${demoQ}`)}
               >
                 <td className={styles.td}>
                   {new Date(a.createdAt).toLocaleDateString(undefined, {

@@ -67,13 +67,24 @@ export async function getMailboxSettings(client: Client, userId: string) {
  * Get Intune managed devices filtered to Teams Rooms.
  */
 export async function getManagedDevices(client: Client) {
+  // deviceCategory is a navigation property, not filterable as a simple string.
+  // Instead, fetch Windows devices and filter client-side by model keywords.
   const response = await client
     .api('/deviceManagement/managedDevices')
-    .filter("deviceCategory eq 'TeamsRoom' or contains(model,'Teams Room')")
-    .select('id,deviceName,osVersion,complianceState,model,manufacturer,operatingSystem')
+    .filter("operatingSystem eq 'Windows'")
+    .select('id,deviceName,osVersion,complianceState,model,manufacturer,operatingSystem,deviceCategoryDisplayName')
     .top(999)
     .get();
-  return response.value as ManagedDevice[];
+  const all = response.value as ManagedDevice[];
+  // Filter to likely Teams Rooms devices by model name
+  const roomKeywords = ['teams room', 'mtr', 'collaboration bar', 'surface hub'];
+  return all.filter((d) => {
+    const model = (d.model ?? '').toLowerCase();
+    const name = (d.deviceName ?? '').toLowerCase();
+    const category = ((d as any).deviceCategoryDisplayName ?? '').toLowerCase();
+    return roomKeywords.some((kw) => model.includes(kw) || name.includes(kw)) ||
+           category.includes('teams') || category.includes('room');
+  });
 }
 
 // Type definitions for Graph responses

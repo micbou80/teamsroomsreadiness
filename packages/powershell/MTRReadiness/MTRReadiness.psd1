@@ -8,9 +8,10 @@
     Description       = 'Companion module for Teams Rooms Readiness Assessment. Runs Exchange Online calendar processing and network connectivity checks that require local execution, then exports JSON for upload to the web dashboard.'
     PowerShellVersion = '5.1'
 
-    RequiredModules   = @(
-        @{ ModuleName = 'ExchangeOnlineManagement'; ModuleVersion = '3.0.0' }
-    )
+    # ExchangeOnlineManagement is needed for calendar checks but not for network checks.
+    # Removed from RequiredModules so the module can load without it.
+    # Calendar checks will validate the dependency at runtime.
+    RequiredModules   = @()
 
     FunctionsToExport = @(
         'Invoke-MTRReadinessCheck'

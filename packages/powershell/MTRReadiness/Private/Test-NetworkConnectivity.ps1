@@ -29,7 +29,7 @@ function Test-UDPPortReachability {
 
             $endpoint = New-Object System.Net.IPEndPoint($addresses[0], $port)
 
-            # Send a STUN binding request (simplified — 20-byte header)
+            # Send a STUN binding request (simplified - 20-byte header)
             $stunHeader = [byte[]]@(0x00, 0x01, 0x00, 0x00) + # Binding Request, length 0
                           [byte[]]@(0x21, 0x12, 0xA4, 0x42) + # Magic cookie
                           (1..12 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }) # Transaction ID
@@ -42,7 +42,7 @@ function Test-UDPPortReachability {
                 $passedPorts += $port
             }
             catch [System.Net.Sockets.SocketException] {
-                # Timeout — port may be blocked
+                # Timeout - port may be blocked
                 $failedPorts += $port
             }
             finally {
@@ -56,7 +56,7 @@ function Test-UDPPortReachability {
 
     if ($failedPorts.Count -eq 0) {
         return [PSCustomObject]@{
-            CheckId    = 'udp-ports-reachable'
+            CheckId    = 'net-udp-ports-reachable'
             CategoryId = 'network'
             Status     = 'pass'
             Details    = "All Teams media relay UDP ports (3478-3481) are reachable."
@@ -65,7 +65,7 @@ function Test-UDPPortReachability {
     }
     else {
         return [PSCustomObject]@{
-            CheckId    = 'udp-ports-reachable'
+            CheckId    = 'net-udp-ports-reachable'
             CategoryId = 'network'
             Status     = 'fail'
             Details    = "UDP port(s) $($failedPorts -join ', ') are not reachable to $targetHost. Media quality will be degraded."
@@ -115,7 +115,7 @@ function Test-TCPConnectivity {
 
     if ($failed.Count -eq 0) {
         return [PSCustomObject]@{
-            CheckId    = 'tcp-443-reachable'
+            CheckId    = 'net-tcp-443-reachable'
             CategoryId = 'network'
             Status     = 'pass'
             Details    = "All $($endpoints.Count) Teams service endpoints are reachable on TCP 443."
@@ -124,7 +124,7 @@ function Test-TCPConnectivity {
     }
     else {
         return [PSCustomObject]@{
-            CheckId    = 'tcp-443-reachable'
+            CheckId    = 'net-tcp-443-reachable'
             CategoryId = 'network'
             Status     = 'fail'
             Details    = "$($failed.Count) endpoint(s) unreachable on TCP 443: $($failed -join ', ')."

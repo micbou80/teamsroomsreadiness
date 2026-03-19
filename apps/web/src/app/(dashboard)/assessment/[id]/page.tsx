@@ -23,10 +23,15 @@ import {
 import {
   ArrowLeft24Regular,
   ArrowDownload24Regular,
+  ArrowUpload24Regular,
   DocumentPdf24Regular,
   Table24Regular,
   Warning24Filled,
   DismissCircle24Filled,
+  Clock24Regular,
+  CheckmarkCircle24Filled,
+  ShieldCheckmark24Filled,
+  ShieldDismiss24Filled,
 } from '@fluentui/react-icons';
 import { StatusBadge } from '@/components/assessment/StatusBadge';
 import type { Assessment, CategoryResult, CheckResult, CheckStatus } from '@/checks/types';
@@ -114,6 +119,67 @@ const useStyles = makeStyles({
     alignItems: 'center',
     minHeight: '300px',
   },
+  pendingBanner: {
+    marginTop: '24px',
+    padding: '20px 24px',
+    backgroundColor: tokens.colorNeutralBackground2,
+    borderRadius: tokens.borderRadiusMedium,
+    borderLeft: `4px solid ${tokens.colorBrandStroke1}`,
+  },
+  pendingSteps: {
+    marginTop: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  pendingStep: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px',
+  },
+  stepNumber: {
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    backgroundColor: tokens.colorBrandBackground,
+    color: tokens.colorNeutralForegroundOnBrand,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    flexShrink: 0,
+  },
+  codeBlock: {
+    marginTop: '8px',
+    padding: '12px 16px',
+    backgroundColor: tokens.colorNeutralBackground1,
+    borderRadius: tokens.borderRadiusMedium,
+    fontFamily: 'Consolas, Monaco, monospace',
+    fontSize: tokens.fontSizeBase200,
+    overflowX: 'auto',
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  verdictBanner: {
+    marginTop: '24px',
+    padding: '20px 24px',
+    borderRadius: tokens.borderRadiusMedium,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '16px',
+  },
+  verdictReady: {
+    backgroundColor: '#f0fdf4',
+    borderLeft: '4px solid #16a34a',
+  },
+  verdictWarning: {
+    backgroundColor: '#fffbeb',
+    borderLeft: '4px solid #d97706',
+  },
+  verdictBlocked: {
+    backgroundColor: '#fef2f2',
+    borderLeft: '4px solid #dc2626',
+  },
 });
 
 function scoreColor(score: number): string {
@@ -185,7 +251,7 @@ export default function AssessmentResultsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/assessment?id=${assessmentId}&demo=true`);
+        const res = await fetch(`/api/assessment?id=${assessmentId}`);
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error ?? 'Failed to load assessment.');
@@ -215,10 +281,10 @@ export default function AssessmentResultsPage() {
         <Button
           appearance="subtle"
           icon={<ArrowLeft24Regular />}
-          onClick={() => router.push('/history')}
+          onClick={() => router.push('/assessment')}
           className={styles.backLink}
         >
-          Back to History
+          Back to Assessment
         </Button>
         <MessageBar intent="error">
           <MessageBarBody>
@@ -232,11 +298,15 @@ export default function AssessmentResultsPage() {
 
   const categoryResults: CategoryResult[] = assessment.categories ?? [];
 
+  // Collect pending checks (PowerShell-only, not yet uploaded)
+  const pendingChecks: (CheckResult & { categoryName: string })[] = [];
   // Collect all failing/warning checks sorted by severity
   const attentionChecks: (CheckResult & { categoryName: string })[] = [];
   for (const cat of categoryResults) {
     for (const check of cat.checks) {
-      if (check.status === 'fail' || check.status === 'warning') {
+      if (check.status === 'pending') {
+        pendingChecks.push({ ...check, categoryName: cat.name });
+      } else if (check.status === 'fail' || check.status === 'warning') {
         attentionChecks.push({ ...check, categoryName: cat.name });
       }
     }
@@ -245,6 +315,37 @@ export default function AssessmentResultsPage() {
     (a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9),
   );
 
+  // Deployment readiness verdict
+  const criticalFails = attentionChecks.filter(
+    (c) => c.status === 'fail' && c.severity === 'critical',
+  );
+  const highFails = attentionChecks.filter(
+    (c) => c.status === 'fail' && c.severity === 'high',
+  );
+  const nonCriticalIssues = attentionChecks.filter(
+    (c) => c.severity === 'medium' || c.severity === 'low',
+  );
+
+  let verdictLevel: 'ready' | 'warning' | 'blocked';
+  let verdictTitle: string;
+  let verdictDescription: string;
+
+  if (criticalFails.length > 0) {
+    verdictLevel = 'blocked';
+    verdictTitle = 'Not ready to deploy';
+    verdictDescription = `${criticalFails.length} critical issue${criticalFails.length !== 1 ? 's' : ''} must be resolved before deploying Teams Rooms. These will prevent devices from functioning correctly.`;
+  } else if (highFails.length > 0) {
+    verdictLevel = 'warning';
+    verdictTitle = 'Deploy with caution';
+    verdictDescription = `No critical blockers, but ${highFails.length} high-severity issue${highFails.length !== 1 ? 's' : ''} should be addressed. You can start deployment, but expect some problems.`;
+  } else {
+    verdictLevel = 'ready';
+    verdictTitle = 'Ready to deploy';
+    verdictDescription = nonCriticalIssues.length > 0
+      ? `No critical or high-severity blockers found. ${nonCriticalIssues.length} non-critical item${nonCriticalIssues.length !== 1 ? 's' : ''} can be addressed after deployment.`
+      : 'All checks passed. Your tenant is fully ready for Teams Rooms deployment.';
+  }
+
   const meta = assessment.metadata;
 
   return (
@@ -252,10 +353,10 @@ export default function AssessmentResultsPage() {
       <Button
         appearance="subtle"
         icon={<ArrowLeft24Regular />}
-        onClick={() => router.push('/history')}
+        onClick={() => router.push('/assessment')}
         className={styles.backLink}
       >
-        Back to History
+        Back to Assessment
       </Button>
 
       <div className={styles.header}>
@@ -270,7 +371,7 @@ export default function AssessmentResultsPage() {
             appearance="secondary"
             icon={<DocumentPdf24Regular />}
             onClick={() => {
-              window.open(`/api/export/pdf?id=${assessmentId}&demo=true`, '_blank');
+              window.open(`/api/export/pdf?id=${assessmentId}`, '_blank');
             }}
           >
             Export PDF
@@ -279,7 +380,7 @@ export default function AssessmentResultsPage() {
             appearance="secondary"
             icon={<Table24Regular />}
             onClick={() => {
-              window.open(`/api/export/excel?id=${assessmentId}&demo=true`, '_blank');
+              window.open(`/api/export/excel?id=${assessmentId}`, '_blank');
             }}
           >
             Export Excel
@@ -303,6 +404,77 @@ export default function AssessmentResultsPage() {
           )}
         </div>
       </div>
+
+      {/* Deployment Readiness Verdict */}
+      <div
+        className={`${styles.verdictBanner} ${
+          verdictLevel === 'ready'
+            ? styles.verdictReady
+            : verdictLevel === 'warning'
+              ? styles.verdictWarning
+              : styles.verdictBlocked
+        }`}
+      >
+        {verdictLevel === 'ready' ? (
+          <ShieldCheckmark24Filled style={{ color: '#16a34a', flexShrink: 0, fontSize: '28px' }} />
+        ) : verdictLevel === 'warning' ? (
+          <Warning24Filled style={{ color: '#d97706', flexShrink: 0, fontSize: '28px' }} />
+        ) : (
+          <ShieldDismiss24Filled style={{ color: '#dc2626', flexShrink: 0, fontSize: '28px' }} />
+        )}
+        <div>
+          <Text weight="bold" size={400} style={{
+            color: verdictLevel === 'ready' ? '#16a34a' : verdictLevel === 'warning' ? '#92400e' : '#dc2626',
+          }}>
+            {verdictTitle}
+          </Text>
+          <Text size={200} style={{ display: 'block', marginTop: '4px' }}>
+            {verdictDescription}
+          </Text>
+          {verdictLevel !== 'blocked' && pendingChecks.length > 0 && (
+            <Text size={200} style={{ display: 'block', marginTop: '4px', color: tokens.colorNeutralForeground3 }}>
+              Note: {pendingChecks.length} check{pendingChecks.length !== 1 ? 's are' : ' is'} still
+              pending PowerShell results. The verdict may change once those are uploaded.
+            </Text>
+          )}
+        </div>
+      </div>
+
+      {/* Pending checks — next steps */}
+      {pendingChecks.length > 0 && (
+        <div className={styles.pendingBanner}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Clock24Regular style={{ color: tokens.colorBrandForeground1 }} />
+            <Text weight="semibold" size={400}>
+              {pendingChecks.length} check{pendingChecks.length !== 1 ? 's' : ''} pending
+            </Text>
+          </div>
+          <Text size={200} style={{ display: 'block', marginTop: '4px', color: tokens.colorNeutralForeground3 }}>
+            These checks require Exchange Online PowerShell. Run the command below and upload the results.
+          </Text>
+
+          <div className={styles.codeBlock} style={{ marginTop: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+            Install-Module MTRReadiness -Scope CurrentUser<br />
+            Connect-ExchangeOnline<br />
+            Invoke-MTRReadinessCheck -RoomMailboxes &apos;mtr-room@contoso.com&apos;
+          </div>
+
+          <Button
+            appearance="primary"
+            size="small"
+            icon={<ArrowUpload24Regular />}
+            style={{ marginTop: '12px' }}
+            onClick={() => router.push('/upload')}
+          >
+            Upload PowerShell Results
+          </Button>
+
+          <Divider style={{ margin: '16px 0 8px' }} />
+          <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+            Pending: {pendingChecks.map((c) => c.name).join(', ')}
+          </Text>
+        </div>
+      )}
 
       <Divider style={{ margin: '32px 0' }} />
 
@@ -378,12 +550,63 @@ export default function AssessmentResultsPage() {
                       {check.remediation}
                     </Text>
                   )}
+                  {check.docUrl && (
+                    <a
+                      href={check.docUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: '12px',
+                        marginTop: '4px',
+                        display: 'inline-block',
+                        color: tokens.colorBrandForeground1,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      View Microsoft Learn documentation &rarr;
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {/* What's Next — clear actions */}
+      <Divider style={{ margin: '32px 0' }} />
+      <Title2 as="h2">What&apos;s Next</Title2>
+      <div style={{ display: 'flex', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
+        <Button
+          appearance="primary"
+          icon={<DocumentPdf24Regular />}
+          onClick={() => window.open(`/api/export/pdf?id=${assessmentId}`, '_blank')}
+        >
+          Export PDF Report
+        </Button>
+        <Button
+          appearance="secondary"
+          icon={<Table24Regular />}
+          onClick={() => window.open(`/api/export/excel?id=${assessmentId}`, '_blank')}
+        >
+          Export Excel
+        </Button>
+        {pendingChecks.length > 0 && (
+          <Button
+            appearance="secondary"
+            icon={<ArrowUpload24Regular />}
+            onClick={() => router.push('/upload')}
+          >
+            Upload PowerShell Results
+          </Button>
+        )}
+        <Button
+          appearance="subtle"
+          onClick={() => router.push('/assessment')}
+        >
+          Run New Assessment
+        </Button>
+      </div>
     </div>
   );
 }

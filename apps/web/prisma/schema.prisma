@@ -51,3 +51,13 @@ model ManualCheck {
   completedBy  String
   completedAt  DateTime   @default(now())
 }
+
+model UploadToken {
+  id           String    @id @default(cuid())
+  token        String    @unique
+  assessmentId String
+  tenantId     String
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
+}

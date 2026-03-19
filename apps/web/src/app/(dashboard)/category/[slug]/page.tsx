@@ -121,7 +121,7 @@ export default function CategoryDetailPage() {
       }
 
       try {
-        const res = await fetch(`/api/assessment?id=${assessmentId}&demo=true`);
+        const res = await fetch(`/api/assessment?id=${assessmentId}`);
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error ?? 'Failed to load assessment.');

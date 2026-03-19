@@ -26,7 +26,7 @@ function Test-WebSocketSupport {
             ).Wait(5000)
 
             return [PSCustomObject]@{
-                CheckId    = 'websocket-permitted'
+                CheckId    = 'net-websocket-permitted'
                 CategoryId = 'network'
                 Status     = 'pass'
                 Details    = "WebSocket connections to Teams signaling endpoints are permitted."
@@ -35,7 +35,7 @@ function Test-WebSocketSupport {
         }
         else {
             return [PSCustomObject]@{
-                CheckId    = 'websocket-permitted'
+                CheckId    = 'net-websocket-permitted'
                 CategoryId = 'network'
                 Status     = 'fail'
                 Details    = "WebSocket connection to Teams endpoint returned state: $($ws.State)."
@@ -45,10 +45,10 @@ function Test-WebSocketSupport {
     }
     catch {
         return [PSCustomObject]@{
-            CheckId    = 'websocket-permitted'
+            CheckId    = 'net-websocket-permitted'
             CategoryId = 'network'
             Status     = 'fail'
-            Details    = "WebSocket connection failed: $($_.Exception.InnerException.Message ?? $_.Exception.Message). Check proxy/firewall WebSocket rules."
+            Details    = "WebSocket connection failed: $(if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }). Check proxy/firewall WebSocket rules."
             RawData    = @{ endpoint = $wsEndpoint; error = $_.Exception.Message }
         }
     }
