@@ -2,6 +2,8 @@
 
 An open-source tool that validates your Microsoft 365 tenant configuration before deploying Microsoft Teams Rooms. Runs **40 automated checks across 9 categories**: licensing, identity, calendar, Conditional Access, network, platform, security, management, and voice.
 
+![Assessment page](docs/screenshot-assessment.png)
+
 ---
 
 ## How it works
